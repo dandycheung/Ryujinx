@@ -1,4 +1,4 @@
-﻿using Ryujinx.Common.Logging;
+using Ryujinx.Common.Logging;
 using Ryujinx.Horizon.Bcat.Ipc.Types;
 using Ryujinx.Horizon.Common;
 using Ryujinx.Horizon.Sdk.Bcat;
@@ -39,7 +39,7 @@ namespace Ryujinx.Horizon.Bcat.Ipc
             deliveryCacheProgressImpl = new DeliveryCacheProgressImpl
             {
                 State = DeliveryCacheProgressImpl.Status.Done,
-                Result = 0
+                Result = 0,
             };
 
             Logger.Stub?.PrintStub(LogClass.ServiceBcat);

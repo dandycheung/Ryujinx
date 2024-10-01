@@ -11,7 +11,7 @@ namespace ARMeilleure.Translation
         private int[] _postOrderMap;
 
         public int LocalsCount { get; private set; }
-        public BasicBlock Entry { get; }
+        public BasicBlock Entry { get; private set; }
         public IntrusiveList<BasicBlock> Blocks { get; }
         public BasicBlock[] PostOrderBlocks => _postOrderBlocks;
         public int[] PostOrderMap => _postOrderMap;
@@ -32,6 +32,15 @@ namespace ARMeilleure.Translation
             result.NumberLocal(++LocalsCount);
 
             return result;
+        }
+
+        public void UpdateEntry(BasicBlock newEntry)
+        {
+            newEntry.AddSuccessor(Entry);
+
+            Entry = newEntry;
+            Blocks.AddFirst(newEntry);
+            Update();
         }
 
         public void Update()
@@ -130,7 +139,7 @@ namespace ARMeilleure.Translation
 
         public BasicBlock SplitEdge(BasicBlock predecessor, BasicBlock successor)
         {
-            BasicBlock splitBlock = new BasicBlock(Blocks.Count);
+            BasicBlock splitBlock = new(Blocks.Count);
 
             for (int i = 0; i < predecessor.SuccessorsCount; i++)
             {

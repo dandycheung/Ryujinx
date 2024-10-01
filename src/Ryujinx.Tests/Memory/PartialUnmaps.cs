@@ -1,4 +1,4 @@
-﻿using ARMeilleure.Signal;
+using ARMeilleure.Signal;
 using ARMeilleure.Translation;
 using NUnit.Framework;
 using Ryujinx.Common.Memory.PartialUnmaps;
@@ -20,7 +20,7 @@ namespace Ryujinx.Tests.Memory
     {
         private static Translator _translator;
 
-        private (MemoryBlock virt, MemoryBlock mirror, MemoryEhMeilleure exceptionHandler) GetVirtual(ulong asSize)
+        private static (MemoryBlock virt, MemoryBlock mirror, MemoryEhMeilleure exceptionHandler) GetVirtual(ulong asSize)
         {
             MemoryAllocationFlags asFlags = MemoryAllocationFlags.Reserve | MemoryAllocationFlags.ViewCompatible;
 
@@ -33,7 +33,7 @@ namespace Ryujinx.Tests.Memory
             return (addressSpace, addressSpaceMirror, exceptionHandler);
         }
 
-        private int CountThreads(ref PartialUnmapState state)
+        private static int CountThreads(ref PartialUnmapState state)
         {
             int count = 0;
 
@@ -50,7 +50,7 @@ namespace Ryujinx.Tests.Memory
             return count;
         }
 
-        private void EnsureTranslator()
+        private static void EnsureTranslator()
         {
             // Create a translator, as one is needed to register the signal handler or emit methods.
             _translator ??= new Translator(new JitMemoryAllocator(), new MockMemoryManager(), true);
@@ -239,7 +239,7 @@ namespace Ryujinx.Tests.Memory
                 var writeFunc = TestMethods.GenerateDebugNativeWriteLoop();
                 IntPtr writePtr = mainMemory.GetPointer(vaSize - 0x1000, 4);
 
-                Thread testThread = new Thread(() =>
+                Thread testThread = new(() =>
                 {
                     writeFunc(statePtr, writePtr);
                 });
@@ -283,7 +283,7 @@ namespace Ryujinx.Tests.Memory
         [Test]
         // Only test in Windows, as this is only used on Windows and uses Windows APIs for trimming.
         [Platform("Win")]
-        [SuppressMessage("Interoperability", "CA1416:Validate platform compatibility")]
+        [SuppressMessage("Interoperability", "CA1416: Validate platform compatibility")]
         public void ThreadLocalMap()
         {
             PartialUnmapState.Reset();
@@ -388,14 +388,14 @@ namespace Ryujinx.Tests.Memory
                     {
                         rwLock.AcquireReaderLock();
 
-                        int originalValue = Thread.VolatileRead(ref value);
+                        int originalValue = Volatile.Read(ref value);
 
                         count++;
 
                         // Spin a bit.
                         for (int i = 0; i < 100; i++)
                         {
-                            if (Thread.VolatileRead(ref readersAllowed) == 0)
+                            if (Volatile.Read(ref readersAllowed) == 0)
                             {
                                 error = true;
                                 running = false;
@@ -403,7 +403,7 @@ namespace Ryujinx.Tests.Memory
                         }
 
                         // Should not change while the lock is held.
-                        if (Thread.VolatileRead(ref value) != originalValue)
+                        if (Volatile.Read(ref value) != originalValue)
                         {
                             error = true;
                             running = false;

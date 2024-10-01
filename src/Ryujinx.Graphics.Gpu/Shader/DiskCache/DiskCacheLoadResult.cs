@@ -21,6 +21,11 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
         InvalidCb1DataLength,
 
         /// <summary>
+        /// The cache is missing the length of a texture array used by the shader.
+        /// </summary>
+        MissingTextureArrayLength,
+
+        /// <summary>
         /// The cache is missing the descriptor of a texture used by the shader.
         /// </summary>
         MissingTextureDescriptor,
@@ -43,7 +48,7 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
         /// <summary>
         /// File might be valid, but is incompatible with the current emulator version.
         /// </summary>
-        IncompatibleVersion
+        IncompatibleVersion,
     }
 
     static class DiskCacheLoadResultExtensions
@@ -60,12 +65,13 @@ namespace Ryujinx.Graphics.Gpu.Shader.DiskCache
                 DiskCacheLoadResult.Success => "No error.",
                 DiskCacheLoadResult.NoAccess => "Could not access the cache file.",
                 DiskCacheLoadResult.InvalidCb1DataLength => "Constant buffer 1 data length is too low.",
+                DiskCacheLoadResult.MissingTextureArrayLength => "Texture array length missing from the cache file.",
                 DiskCacheLoadResult.MissingTextureDescriptor => "Texture descriptor missing from the cache file.",
                 DiskCacheLoadResult.FileCorruptedGeneric => "The cache file is corrupted.",
                 DiskCacheLoadResult.FileCorruptedInvalidMagic => "Magic check failed, the cache file is corrupted.",
                 DiskCacheLoadResult.FileCorruptedInvalidLength => "Length check failed, the cache file is corrupted.",
                 DiskCacheLoadResult.IncompatibleVersion => "The version of the disk cache is not compatible with this version of the emulator.",
-                _ => "Unknown error."
+                _ => "Unknown error.",
             };
         }
     }

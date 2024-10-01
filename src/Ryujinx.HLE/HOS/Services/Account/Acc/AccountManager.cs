@@ -1,9 +1,10 @@
-﻿using LibHac;
+using LibHac;
 using LibHac.Common;
 using LibHac.Fs;
 using LibHac.Fs.Shim;
 using Ryujinx.Common;
 using Ryujinx.Common.Logging;
+using Ryujinx.Horizon.Sdk.Account;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -11,9 +12,9 @@ using System.Linq;
 
 namespace Ryujinx.HLE.HOS.Services.Account.Acc
 {
-    public class AccountManager
+    public class AccountManager : IEmulatorAccountManager
     {
-        public static readonly UserId DefaultUserId = new UserId("00000000000000010000000000000000");
+        public static readonly UserId DefaultUserId = new("00000000000000010000000000000000");
 
         private readonly AccountSaveDataManager _accountSaveDataManager;
 
@@ -51,7 +52,9 @@ namespace Ryujinx.HLE.HOS.Services.Account.Acc
                 {
                     commandLineUserProfileOverride = _profiles.Values.FirstOrDefault(x => x.Name == initialProfileName)?.UserId ?? default;
                     if (commandLineUserProfileOverride.IsNull)
+                    {
                         Logger.Warning?.Print(LogClass.Application, $"The command line specified profile named '{initialProfileName}' was not found");
+                    }
                 }
                 OpenUser(commandLineUserProfileOverride.IsNull ? _accountSaveDataManager.LastOpened : commandLineUserProfileOverride);
             }
@@ -64,7 +67,7 @@ namespace Ryujinx.HLE.HOS.Services.Account.Acc
                 userId = new UserId(Guid.NewGuid().ToString().Replace("-", ""));
             }
 
-            UserProfile profile = new UserProfile(userId, name, image);
+            UserProfile profile = new(userId, name, image);
 
             _profiles.AddOrUpdate(userId.ToString(), profile, (key, old) => profile);
 
@@ -104,6 +107,11 @@ namespace Ryujinx.HLE.HOS.Services.Account.Acc
             _accountSaveDataManager.Save(_profiles);
         }
 
+        public void OpenUserOnlinePlay(Uid userId)
+        {
+            OpenUserOnlinePlay(new UserId((long)userId.Low, (long)userId.High));
+        }
+
         public void OpenUserOnlinePlay(UserId userId)
         {
             if (_profiles.TryGetValue(userId.ToString(), out UserProfile profile))
@@ -123,6 +131,11 @@ namespace Ryujinx.HLE.HOS.Services.Account.Acc
             }
 
             _accountSaveDataManager.Save(_profiles);
+        }
+
+        public void CloseUserOnlinePlay(Uid userId)
+        {
+            CloseUserOnlinePlay(new UserId((long)userId.Low, (long)userId.High));
         }
 
         public void CloseUserOnlinePlay(UserId userId)

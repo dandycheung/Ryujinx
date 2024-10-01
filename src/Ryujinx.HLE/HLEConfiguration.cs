@@ -1,12 +1,13 @@
-﻿using LibHac.Tools.FsSystem;
+using LibHac.Tools.FsSystem;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Common.Configuration;
+using Ryujinx.Common.Configuration.Multiplayer;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.HLE.HOS.SystemState;
-using Ryujinx.HLE.Ui;
+using Ryujinx.HLE.UI;
 using System;
 
 namespace Ryujinx.HLE
@@ -62,7 +63,7 @@ namespace Ryujinx.HLE
         /// The handler for various UI related operations needed outside of HLE.
         /// </summary>
         /// <remarks>This cannot be changed after <see cref="Switch"/> instantiation.</remarks>
-        internal readonly IHostUiHandler HostUiHandler;
+        internal readonly IHostUIHandler HostUIHandler;
 
         /// <summary>
         /// Control the memory configuration used by the emulation context.
@@ -100,7 +101,7 @@ namespace Ryujinx.HLE
         /// <summary>
         /// Control if the guest application should be told that there is a Internet connection available.
         /// </summary>
-        internal readonly bool EnableInternetAccess;
+        public bool EnableInternetAccess { internal get; set; }
 
         /// <summary>
         /// Control LibHac's integrity check level.
@@ -159,61 +160,68 @@ namespace Ryujinx.HLE
         public string MultiplayerLanInterfaceId { internal get; set; }
 
         /// <summary>
+        /// Multiplayer Mode
+        /// </summary>
+        public MultiplayerMode MultiplayerMode { internal get; set; }
+
+        /// <summary>
         /// An action called when HLE force a refresh of output after docked mode changed.
         /// </summary>
         public Action RefreshInputConfig { internal get; set; }
 
-        public HLEConfiguration(VirtualFileSystem      virtualFileSystem,
-                                LibHacHorizonManager   libHacHorizonManager,
-                                ContentManager         contentManager,
-                                AccountManager         accountManager,
+        public HLEConfiguration(VirtualFileSystem virtualFileSystem,
+                                LibHacHorizonManager libHacHorizonManager,
+                                ContentManager contentManager,
+                                AccountManager accountManager,
                                 UserChannelPersistence userChannelPersistence,
-                                IRenderer              gpuRenderer,
-                                IHardwareDeviceDriver  audioDeviceDriver,
-                                MemoryConfiguration    memoryConfiguration,
-                                IHostUiHandler         hostUiHandler,
-                                SystemLanguage         systemLanguage,
-                                RegionCode             region,
-                                bool                   enableVsync,
-                                bool                   enableDockedMode,
-                                bool                   enablePtc,
-                                bool                   enableInternetAccess,
-                                IntegrityCheckLevel    fsIntegrityCheckLevel,
-                                int                    fsGlobalAccessLogMode,
-                                long                   systemTimeOffset,
-                                string                 timeZone,
-                                MemoryManagerMode      memoryManagerMode,
-                                bool                   ignoreMissingServices,
-                                AspectRatio            aspectRatio,
-                                float                  audioVolume,
-                                bool                   useHypervisor,
-                                string                 multiplayerLanInterfaceId)
+                                IRenderer gpuRenderer,
+                                IHardwareDeviceDriver audioDeviceDriver,
+                                MemoryConfiguration memoryConfiguration,
+                                IHostUIHandler hostUIHandler,
+                                SystemLanguage systemLanguage,
+                                RegionCode region,
+                                bool enableVsync,
+                                bool enableDockedMode,
+                                bool enablePtc,
+                                bool enableInternetAccess,
+                                IntegrityCheckLevel fsIntegrityCheckLevel,
+                                int fsGlobalAccessLogMode,
+                                long systemTimeOffset,
+                                string timeZone,
+                                MemoryManagerMode memoryManagerMode,
+                                bool ignoreMissingServices,
+                                AspectRatio aspectRatio,
+                                float audioVolume,
+                                bool useHypervisor,
+                                string multiplayerLanInterfaceId,
+                                MultiplayerMode multiplayerMode)
         {
-            VirtualFileSystem         = virtualFileSystem;
-            LibHacHorizonManager      = libHacHorizonManager;
-            AccountManager            = accountManager;
-            ContentManager            = contentManager;
-            UserChannelPersistence    = userChannelPersistence;
-            GpuRenderer               = gpuRenderer;
-            AudioDeviceDriver         = audioDeviceDriver;
-            MemoryConfiguration       = memoryConfiguration;
-            HostUiHandler             = hostUiHandler;
-            SystemLanguage            = systemLanguage;
-            Region                    = region;
-            EnableVsync               = enableVsync;
-            EnableDockedMode          = enableDockedMode;
-            EnablePtc                 = enablePtc;
-            EnableInternetAccess      = enableInternetAccess;
-            FsIntegrityCheckLevel     = fsIntegrityCheckLevel;
-            FsGlobalAccessLogMode     = fsGlobalAccessLogMode;
-            SystemTimeOffset          = systemTimeOffset;
-            TimeZone                  = timeZone;
-            MemoryManagerMode         = memoryManagerMode;
-            IgnoreMissingServices     = ignoreMissingServices;
-            AspectRatio               = aspectRatio;
-            AudioVolume               = audioVolume;
-            UseHypervisor             = useHypervisor;
+            VirtualFileSystem = virtualFileSystem;
+            LibHacHorizonManager = libHacHorizonManager;
+            AccountManager = accountManager;
+            ContentManager = contentManager;
+            UserChannelPersistence = userChannelPersistence;
+            GpuRenderer = gpuRenderer;
+            AudioDeviceDriver = audioDeviceDriver;
+            MemoryConfiguration = memoryConfiguration;
+            HostUIHandler = hostUIHandler;
+            SystemLanguage = systemLanguage;
+            Region = region;
+            EnableVsync = enableVsync;
+            EnableDockedMode = enableDockedMode;
+            EnablePtc = enablePtc;
+            EnableInternetAccess = enableInternetAccess;
+            FsIntegrityCheckLevel = fsIntegrityCheckLevel;
+            FsGlobalAccessLogMode = fsGlobalAccessLogMode;
+            SystemTimeOffset = systemTimeOffset;
+            TimeZone = timeZone;
+            MemoryManagerMode = memoryManagerMode;
+            IgnoreMissingServices = ignoreMissingServices;
+            AspectRatio = aspectRatio;
+            AudioVolume = audioVolume;
+            UseHypervisor = useHypervisor;
             MultiplayerLanInterfaceId = multiplayerLanInterfaceId;
+            MultiplayerMode = multiplayerMode;
         }
     }
 }

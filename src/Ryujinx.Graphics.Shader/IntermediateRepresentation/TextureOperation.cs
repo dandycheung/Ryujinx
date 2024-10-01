@@ -8,16 +8,18 @@ namespace Ryujinx.Graphics.Shader.IntermediateRepresentation
         public TextureFormat Format { get; set; }
         public TextureFlags Flags { get; private set; }
 
-        public int CbufSlot { get; private set; }
-        public int Handle { get; private set; }
+        public int Set { get; private set; }
+        public int Binding { get; private set; }
+        public int SamplerSet { get; private set; }
+        public int SamplerBinding { get; private set; }
 
         public TextureOperation(
             Instruction inst,
             SamplerType type,
             TextureFormat format,
             TextureFlags flags,
-            int cbufSlot,
-            int handle,
+            int set,
+            int binding,
             int compIndex,
             Operand[] dests,
             Operand[] sources) : base(inst, compIndex, dests, sources)
@@ -25,30 +27,28 @@ namespace Ryujinx.Graphics.Shader.IntermediateRepresentation
             Type = type;
             Format = format;
             Flags = flags;
-            CbufSlot = cbufSlot;
-            Handle = handle;
+            Set = set;
+            Binding = binding;
+            SamplerSet = -1;
+            SamplerBinding = -1;
         }
 
-        public TextureOperation(
-            Instruction inst,
-            SamplerType type,
-            TextureFormat format,
-            TextureFlags flags,
-            int handle,
-            int compIndex,
-            Operand[] dests,
-            Operand[] sources) : this(inst, type, format, flags, DefaultCbufSlot, handle, compIndex, dests, sources)
+        public void TurnIntoArray(SetBindingPair setAndBinding)
         {
-        }
-
-        public void TurnIntoIndexed(int handle)
-        {
-            Type |= SamplerType.Indexed;
             Flags &= ~TextureFlags.Bindless;
-            Handle = handle;
+            Set = setAndBinding.SetIndex;
+            Binding = setAndBinding.Binding;
         }
 
-        public void SetHandle(int handle, int cbufSlot = DefaultCbufSlot)
+        public void TurnIntoArray(SetBindingPair textureSetAndBinding, SetBindingPair samplerSetAndBinding)
+        {
+            TurnIntoArray(textureSetAndBinding);
+
+            SamplerSet = samplerSetAndBinding.SetIndex;
+            SamplerBinding = samplerSetAndBinding.Binding;
+        }
+
+        public void SetBinding(SetBindingPair setAndBinding)
         {
             if ((Flags & TextureFlags.Bindless) != 0)
             {
@@ -57,8 +57,8 @@ namespace Ryujinx.Graphics.Shader.IntermediateRepresentation
                 RemoveSource(0);
             }
 
-            CbufSlot = cbufSlot;
-            Handle = handle;
+            Set = setAndBinding.SetIndex;
+            Binding = setAndBinding.Binding;
         }
 
         public void SetLodLevelFlag()

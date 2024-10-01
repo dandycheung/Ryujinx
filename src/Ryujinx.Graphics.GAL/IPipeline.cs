@@ -58,7 +58,9 @@ namespace Ryujinx.Graphics.GAL
 
         void SetIndexBuffer(BufferRange buffer, IndexType type);
 
-        void SetImage(int binding, ITexture texture, Format imageFormat);
+        void SetImage(ShaderStage stage, int binding, ITexture texture);
+        void SetImageArray(ShaderStage stage, int binding, IImageArray array);
+        void SetImageArraySeparate(ShaderStage stage, int setIndex, IImageArray array);
 
         void SetLineParameters(float width, bool smooth);
 
@@ -79,7 +81,6 @@ namespace Ryujinx.Graphics.GAL
 
         void SetRasterizerDiscard(bool discard);
 
-        void SetRenderTargetScale(float scale);
         void SetRenderTargetColorMasks(ReadOnlySpan<uint> componentMask);
         void SetRenderTargets(ITexture[] colors, ITexture depthStencil);
 
@@ -90,6 +91,8 @@ namespace Ryujinx.Graphics.GAL
         void SetStorageBuffers(ReadOnlySpan<BufferAssignment> buffers);
 
         void SetTextureAndSampler(ShaderStage stage, int binding, ITexture texture, ISampler sampler);
+        void SetTextureArray(ShaderStage stage, int binding, ITextureArray array);
+        void SetTextureArraySeparate(ShaderStage stage, int setIndex, ITextureArray array);
 
         void SetTransformFeedbackBuffers(ReadOnlySpan<BufferRange> buffers);
         void SetUniformBuffers(ReadOnlySpan<BufferAssignment> buffers);
@@ -99,7 +102,7 @@ namespace Ryujinx.Graphics.GAL
         void SetVertexAttribs(ReadOnlySpan<VertexAttribDescriptor> vertexAttribs);
         void SetVertexBuffers(ReadOnlySpan<VertexBufferDescriptor> vertexBuffers);
 
-        void SetViewports(ReadOnlySpan<Viewport> viewports, bool disableTransform);
+        void SetViewports(ReadOnlySpan<Viewport> viewports);
 
         void TextureBarrier();
         void TextureBarrierTiled();
@@ -107,7 +110,5 @@ namespace Ryujinx.Graphics.GAL
         bool TryHostConditionalRendering(ICounterEvent value, ulong compare, bool isEqual);
         bool TryHostConditionalRendering(ICounterEvent value, ICounterEvent compare, bool isEqual);
         void EndHostConditionalRendering();
-
-        void UpdateRenderScale(ReadOnlySpan<float> scales, int totalCount, int fragmentCount);
     }
 }

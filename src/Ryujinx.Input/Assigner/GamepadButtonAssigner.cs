@@ -10,15 +10,15 @@ namespace Ryujinx.Input.Assigner
     /// </summary>
     public class GamepadButtonAssigner : IButtonAssigner
     {
-        private IGamepad _gamepad;
+        private readonly IGamepad _gamepad;
 
         private GamepadStateSnapshot _currState;
 
         private GamepadStateSnapshot _prevState;
 
-        private JoystickButtonDetector _detector;
+        private readonly JoystickButtonDetector _detector;
 
-        private bool _forStick;
+        private readonly bool _forStick;
 
         public GamepadButtonAssigner(IGamepad gamepad, float triggerThreshold, bool forStick)
         {
@@ -35,7 +35,7 @@ namespace Ryujinx.Input.Assigner
             {
                 _currState = _gamepad.GetStateSnapshot();
                 _prevState = _currState;
-            }    
+            }
         }
 
         public void ReadInput()
@@ -49,9 +49,9 @@ namespace Ryujinx.Input.Assigner
             CollectButtonStats();
         }
 
-        public bool HasAnyButtonPressed()
+        public bool IsAnyButtonPressed()
         {
-            return _detector.HasAnyButtonPressed();
+            return _detector.IsAnyButtonPressed();
         }
 
         public bool ShouldCancel()
@@ -59,16 +59,11 @@ namespace Ryujinx.Input.Assigner
             return _gamepad == null || !_gamepad.IsConnected;
         }
 
-        public string GetPressedButton()
+        public Button? GetPressedButton()
         {
             IEnumerable<GamepadButtonInputId> pressedButtons = _detector.GetPressedButtons();
 
-            if (pressedButtons.Any())
-            {
-                return !_forStick ? pressedButtons.First().ToString() : ((StickInputId)pressedButtons.First()).ToString();
-            }
-
-            return "";
+            return !_forStick ? new(pressedButtons.FirstOrDefault()) : new((StickInputId)pressedButtons.FirstOrDefault());
         }
 
         private void CollectButtonStats()
@@ -116,14 +111,14 @@ namespace Ryujinx.Input.Assigner
 
         private class JoystickButtonDetector
         {
-            private Dictionary<GamepadButtonInputId, InputSummary> _stats;
+            private readonly Dictionary<GamepadButtonInputId, InputSummary> _stats;
 
             public JoystickButtonDetector()
             {
                 _stats = new Dictionary<GamepadButtonInputId, InputSummary>();
             }
 
-            public bool HasAnyButtonPressed()
+            public bool IsAnyButtonPressed()
             {
                 return _stats.Values.Any(CheckButtonPressed);
             }
@@ -135,9 +130,8 @@ namespace Ryujinx.Input.Assigner
 
             public void AddInput(GamepadButtonInputId button, float value)
             {
-                InputSummary inputSummary;
 
-                if (!_stats.TryGetValue(button, out inputSummary))
+                if (!_stats.TryGetValue(button, out InputSummary inputSummary))
                 {
                     inputSummary = new InputSummary();
                     _stats.Add(button, inputSummary);
@@ -148,7 +142,7 @@ namespace Ryujinx.Input.Assigner
 
             public override string ToString()
             {
-                StringWriter writer = new StringWriter();
+                StringWriter writer = new();
 
                 foreach (var kvp in _stats)
                 {

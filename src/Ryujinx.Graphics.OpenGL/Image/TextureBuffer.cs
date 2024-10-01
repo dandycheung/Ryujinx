@@ -1,4 +1,4 @@
-﻿using OpenTK.Graphics.OpenGL;
+using OpenTK.Graphics.OpenGL;
 using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.GAL;
 using System;
@@ -7,7 +7,7 @@ namespace Ryujinx.Graphics.OpenGL.Image
 {
     class TextureBuffer : TextureBase, ITexture
     {
-        private OpenGLRenderer _renderer;
+        private readonly OpenGLRenderer _renderer;
         private int _bufferOffset;
         private int _bufferSize;
         private int _bufferCount;
@@ -54,19 +54,24 @@ namespace Ryujinx.Graphics.OpenGL.Image
             throw new NotImplementedException();
         }
 
-        public void SetData(SpanOrArray<byte> data)
+        /// <inheritdoc/>
+        public void SetData(MemoryOwner<byte> data)
         {
-            var dataSpan = data.AsSpan();
+            var dataSpan = data.Span;
 
-            Buffer.SetData(_buffer, _bufferOffset, dataSpan.Slice(0, Math.Min(dataSpan.Length, _bufferSize)));
+            Buffer.SetData(_buffer, _bufferOffset, dataSpan[..Math.Min(dataSpan.Length, _bufferSize)]);
+
+            data.Dispose();
         }
 
-        public void SetData(SpanOrArray<byte> data, int layer, int level)
+        /// <inheritdoc/>
+        public void SetData(MemoryOwner<byte> data, int layer, int level)
         {
             throw new NotSupportedException();
         }
 
-        public void SetData(SpanOrArray<byte> data, int layer, int level, Rectangle<int> region)
+        /// <inheritdoc/>
+        public void SetData(MemoryOwner<byte> data, int layer, int level, Rectangle<int> region)
         {
             throw new NotSupportedException();
         }

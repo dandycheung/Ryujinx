@@ -18,7 +18,7 @@ namespace Ryujinx.Graphics.OpenGL.Effects
         private int _srcY0Uniform;
         private int _scalingShaderProgram;
         private int _sharpeningShaderProgram;
-        private float _scale = 1;
+        private float _sharpeningLevel = 1;
         private int _srcY1Uniform;
         private int _dstX0Uniform;
         private int _dstX1Uniform;
@@ -30,14 +30,14 @@ namespace Ryujinx.Graphics.OpenGL.Effects
 
         public float Level
         {
-            get => _scale;
+            get => _sharpeningLevel;
             set
             {
-                _scale = MathF.Max(0.01f, value);
+                _sharpeningLevel = MathF.Max(0.01f, value);
             }
         }
 
-        public FsrScalingFilter(OpenGLRenderer renderer, IPostProcessingEffect filter)
+        public FsrScalingFilter(OpenGLRenderer renderer)
         {
             Initialize();
 
@@ -114,7 +114,7 @@ namespace Ryujinx.Graphics.OpenGL.Effects
                     originalInfo.SwizzleB,
                     originalInfo.SwizzleA);
 
-                _intermediaryTexture = new TextureStorage(_renderer, info, view.ScaleFactor);
+                _intermediaryTexture = new TextureStorage(_renderer, info);
                 _intermediaryTexture.CreateDefaultView();
             }
 

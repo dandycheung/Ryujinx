@@ -4,17 +4,16 @@ using Ryujinx.Graphics.Shader.Translation;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-
 using static Ryujinx.Graphics.Shader.IntermediateRepresentation.OperandHelper;
 
 namespace Ryujinx.Graphics.Shader.Instructions
 {
     static partial class InstEmit
     {
-        private static readonly int[,] _maskLut = new int[,]
+        private static readonly int[][] _maskLut = new int[][]
         {
-            { 0b0001, 0b0010, 0b0100, 0b1000, 0b0011, 0b1001, 0b1010, 0b1100 },
-            { 0b0111, 0b1011, 0b1101, 0b1110, 0b1111, 0b0000, 0b0000, 0b0000 }
+            new int[] { 0b0001, 0b0010, 0b0100, 0b1000, 0b0011, 0b1001, 0b1010, 0b1100 },
+            new int[] { 0b0111, 0b1011, 0b1101, 0b1110, 0b1111, 0b0000, 0b0000, 0b0000 },
         };
 
         public const bool Sample1DAs2D = true;
@@ -23,7 +22,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
         {
             Texs,
             Tlds,
-            Tld4s
+            Tld4s,
         }
 
         public static void Tex(EmitterContext context)
@@ -58,8 +57,6 @@ namespace Ryujinx.Graphics.Shader.Instructions
         {
             InstTld op = context.GetOp<InstTld>();
 
-            context.Config.SetUsedFeature(FeatureFlags.IntegerSampling);
-
             var lod = op.Lod ? Lod.Ll : Lod.Lz;
 
             EmitTex(context, TextureFlags.IntCoords, op.Dim, lod, op.TidB, op.WMask, op.SrcA, op.SrcB, op.Dest, op.Ms, false, op.Toff);
@@ -68,8 +65,6 @@ namespace Ryujinx.Graphics.Shader.Instructions
         public static void TldB(EmitterContext context)
         {
             InstTldB op = context.GetOp<InstTldB>();
-
-            context.Config.SetUsedFeature(FeatureFlags.IntegerSampling);
 
             var flags = TextureFlags.IntCoords | TextureFlags.Bindless;
             var lod = op.Lod ? Lod.Ll : Lod.Lz;
@@ -207,7 +202,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
 
             Operand arrayIndex = isArray ? Ra() : null;
 
-            List<Operand> sourcesList = new List<Operand>();
+            List<Operand> sourcesList = new();
 
             if (isBindless)
             {
@@ -225,7 +220,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
             {
                 // For bindless, we don't have any way to know the texture type,
                 // so we assume it's texture buffer when the sampler type is 1D, since that's more common.
-                bool isTypeBuffer = isBindless || context.Config.GpuAccessor.QuerySamplerType(imm) == SamplerType.TextureBuffer;
+                bool isTypeBuffer = isBindless || context.TranslatorContext.GpuAccessor.QuerySamplerType(imm) == SamplerType.TextureBuffer;
                 if (isTypeBuffer)
                 {
                     type = SamplerType.TextureBuffer;
@@ -325,16 +320,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
 
             int handle = !isBindless ? imm : 0;
 
-            TextureOperation operation = context.CreateTextureOperation(
-                Instruction.TextureSample,
-                type,
-                flags,
-                handle,
-                componentMask,
-                dests,
-                sources);
-
-            context.Add(operation);
+            EmitTextureSample(context, type, flags, handle, componentMask, dests, sources);
         }
 
         private static void EmitTexs(
@@ -353,7 +339,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 return;
             }
 
-            List<Operand> sourcesList = new List<Operand>();
+            List<Operand> sourcesList = new();
 
             Operand Ra()
             {
@@ -396,7 +382,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
 
                 if (type == SamplerType.None)
                 {
-                    context.Config.GpuAccessor.Log("Invalid texture sampler type.");
+                    context.TranslatorContext.GpuAccessor.Log("Invalid texture sampler type.");
                     return;
                 }
 
@@ -488,16 +474,14 @@ namespace Ryujinx.Graphics.Shader.Instructions
 
                 if (type == SamplerType.None)
                 {
-                    context.Config.GpuAccessor.Log("Invalid texel fetch sampler type.");
+                    context.TranslatorContext.GpuAccessor.Log("Invalid texel fetch sampler type.");
                     return;
                 }
-
-                context.Config.SetUsedFeature(FeatureFlags.IntegerSampling);
 
                 flags = ConvertTextureFlags(tldsOp.Target) | TextureFlags.IntCoords;
 
                 if (tldsOp.Target == TldsTarget.Texture1DLodZero &&
-                    context.Config.GpuAccessor.QuerySamplerType(tldsOp.TidB) == SamplerType.TextureBuffer)
+                    context.TranslatorContext.GpuAccessor.QuerySamplerType(tldsOp.TidB) == SamplerType.TextureBuffer)
                 {
                     type = SamplerType.TextureBuffer;
                     flags &= ~TextureFlags.LodLevel;
@@ -594,12 +578,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 type = SamplerType.Texture2D;
                 flags = TextureFlags.Gather;
 
-                if (tld4sOp.Dc)
-                {
-                    sourcesList.Add(Rb());
-
-                    type |= SamplerType.Shadow;
-                }
+                int depthCompareIndex = sourcesList.Count;
 
                 if (tld4sOp.Aoffi)
                 {
@@ -608,7 +587,16 @@ namespace Ryujinx.Graphics.Shader.Instructions
                     flags |= TextureFlags.Offset;
                 }
 
-                sourcesList.Add(Const((int)tld4sOp.TexComp));
+                if (tld4sOp.Dc)
+                {
+                    sourcesList.Insert(depthCompareIndex, Rb());
+
+                    type |= SamplerType.Shadow;
+                }
+                else
+                {
+                    sourcesList.Add(Const((int)tld4sOp.TexComp));
+                }
             }
             else
             {
@@ -621,7 +609,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
             Operand[] rd1 = new Operand[2] { ConstF(0), ConstF(0) };
 
             int handle = imm;
-            int componentMask = _maskLut[dest2 == RegisterConsts.RegisterZeroIndex ? 0 : 1, writeMask];
+            int componentMask = _maskLut[dest2 == RegisterConsts.RegisterZeroIndex ? 0 : 1][writeMask];
 
             int componentsCount = BitOperations.PopCount((uint)componentMask);
 
@@ -658,16 +646,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 Array.Resize(ref dests, outputIndex);
             }
 
-            TextureOperation operation = context.CreateTextureOperation(
-                Instruction.TextureSample,
-                type,
-                flags,
-                handle,
-                componentMask,
-                dests,
-                sources);
-
-            context.Add(operation);
+            EmitTextureSample(context, type, flags, handle, componentMask, dests, sources);
 
             if (isF16)
             {
@@ -722,7 +701,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
 
             Operand arrayIndex = isArray ? Ra() : null;
 
-            List<Operand> sourcesList = new List<Operand>();
+            List<Operand> sourcesList = new();
 
             SamplerType type = ConvertSamplerType(dimensions);
             TextureFlags flags = TextureFlags.Gather;
@@ -791,7 +770,10 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 flags |= offset == TexOffset.Ptp ? TextureFlags.Offsets : TextureFlags.Offset;
             }
 
-            sourcesList.Add(Const((int)component));
+            if (!hasDepthCompare)
+            {
+                sourcesList.Add(Const((int)component));
+            }
 
             Operand[] sources = sourcesList.ToArray();
             Operand[] dests = new Operand[BitOperations.PopCount((uint)componentMask)];
@@ -813,18 +795,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 Array.Resize(ref dests, outputIndex);
             }
 
-            int handle = imm;
-
-            TextureOperation operation = context.CreateTextureOperation(
-                Instruction.TextureSample,
-                type,
-                flags,
-                handle,
-                componentMask,
-                dests,
-                sources);
-
-            context.Add(operation);
+            EmitTextureSample(context, type, flags, imm, componentMask, dests, sources);
         }
 
         private static void EmitTmml(
@@ -864,7 +835,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
 
             TextureFlags flags = TextureFlags.None;
 
-            List<Operand> sourcesList = new List<Operand>();
+            List<Operand> sourcesList = new();
 
             if (isBindless)
             {
@@ -914,15 +885,21 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 return Register(dest++, RegisterType.Gpr);
             }
 
-            int handle = imm;
+            SetBindingPair setAndBinding = isBindless ? default : context.ResourceManager.GetTextureOrImageBinding(
+                Instruction.Lod,
+                type,
+                TextureFormat.Unknown,
+                flags,
+                TextureOperation.DefaultCbufSlot,
+                imm);
 
             for (int compMask = componentMask, compIndex = 0; compMask != 0; compMask >>= 1, compIndex++)
             {
                 if ((compMask & 1) != 0)
                 {
-                    Operand destOperand = GetDest();
+                    Operand d = GetDest();
 
-                    if (destOperand == null)
+                    if (d == null)
                     {
                         break;
                     }
@@ -931,28 +908,18 @@ namespace Ryujinx.Graphics.Shader.Instructions
                     if (compIndex >= 2)
                     {
                         context.Add(new CommentNode("Unsupported component z or w found"));
-                        context.Copy(destOperand, Const(0));
+                        context.Copy(d, Const(0));
                     }
                     else
                     {
-                        Operand tempDest = Local();
+                        // The instruction component order is the inverse of GLSL's.
+                        Operand res = context.Lod(type, flags, setAndBinding, compIndex ^ 1, sources);
 
-                        TextureOperation operation = context.CreateTextureOperation(
-                            Instruction.Lod,
-                            type,
-                            flags,
-                            handle,
-                            compIndex ^ 1, // The instruction component order is the inverse of GLSL's.
-                            new[] { tempDest },
-                            sources);
+                        res = context.FPMultiply(res, ConstF(256.0f));
 
-                        context.Add(operation);
+                        Operand fixedPointValue = context.FP32ConvertToS32(res);
 
-                        tempDest = context.FPMultiply(tempDest, ConstF(256.0f));
-
-                        Operand fixedPointValue = context.FP32ConvertToS32(tempDest);
-
-                        context.Copy(destOperand, fixedPointValue);
+                        context.Copy(d, fixedPointValue);
                     }
                 }
             }
@@ -996,7 +963,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
 
             TextureFlags flags = TextureFlags.Derivatives;
 
-            List<Operand> sourcesList = new List<Operand>();
+            List<Operand> sourcesList = new();
 
             if (isBindless)
             {
@@ -1082,18 +1049,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 Array.Resize(ref dests, outputIndex);
             }
 
-            int handle = imm;
-
-            TextureOperation operation = context.CreateTextureOperation(
-                Instruction.TextureSample,
-                type,
-                flags,
-                handle,
-                componentMask,
-                dests,
-                sources);
-
-            context.Add(operation);
+            EmitTextureSample(context, type, flags, imm, componentMask, dests, sources);
         }
 
         private static void EmitTxq(
@@ -1110,12 +1066,6 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 return;
             }
 
-            context.Config.SetUsedFeature(FeatureFlags.IntegerSampling);
-
-            // TODO: Validate and use query.
-            Instruction inst = Instruction.TextureSize;
-            TextureFlags flags = isBindless ? TextureFlags.Bindless : TextureFlags.None;
-
             Operand Ra()
             {
                 if (srcA > RegisterConsts.RegisterZeroIndex)
@@ -1126,7 +1076,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 return context.Copy(Register(srcA++, RegisterType.Gpr));
             }
 
-            List<Operand> sourcesList = new List<Operand>();
+            List<Operand> sourcesList = new();
 
             if (isBindless)
             {
@@ -1151,36 +1101,105 @@ namespace Ryujinx.Graphics.Shader.Instructions
 
             if (isBindless)
             {
-                type = (componentMask & 4) != 0 ? SamplerType.Texture3D : SamplerType.Texture2D;
+                if (query == TexQuery.TexHeaderTextureType)
+                {
+                    type = SamplerType.Texture2D | SamplerType.Multisample;
+                }
+                else
+                {
+                    type = (componentMask & 4) != 0 ? SamplerType.Texture3D : SamplerType.Texture2D;
+                }
             }
             else
             {
-                type = context.Config.GpuAccessor.QuerySamplerType(imm);
+                type = context.TranslatorContext.GpuAccessor.QuerySamplerType(imm);
             }
 
-            for (int compMask = componentMask, compIndex = 0; compMask != 0; compMask >>= 1, compIndex++)
+            TextureFlags flags = isBindless ? TextureFlags.Bindless : TextureFlags.None;
+            SetBindingPair setAndBinding;
+
+            switch (query)
             {
-                if ((compMask & 1) != 0)
-                {
-                    Operand destOperand = GetDest();
-
-                    if (destOperand == null)
-                    {
-                        break;
-                    }
-
-                    TextureOperation operation = context.CreateTextureOperation(
-                        inst,
+                case TexQuery.TexHeaderDimension:
+                    setAndBinding = isBindless ? default : context.ResourceManager.GetTextureOrImageBinding(
+                        Instruction.TextureQuerySize,
                         type,
+                        TextureFormat.Unknown,
                         flags,
-                        imm,
-                        compIndex,
-                        new[] { destOperand },
-                        sources);
+                        TextureOperation.DefaultCbufSlot,
+                        imm);
 
-                    context.Add(operation);
-                }
+                    for (int compMask = componentMask, compIndex = 0; compMask != 0; compMask >>= 1, compIndex++)
+                    {
+                        if ((compMask & 1) != 0)
+                        {
+                            Operand d = GetDest();
+
+                            if (d == null)
+                            {
+                                break;
+                            }
+
+                            context.Copy(d, context.TextureQuerySize(type, flags, setAndBinding, compIndex, sources));
+                        }
+                    }
+                    break;
+
+                case TexQuery.TexHeaderTextureType:
+                    setAndBinding = isBindless ? default : context.ResourceManager.GetTextureOrImageBinding(
+                        Instruction.TextureQuerySamples,
+                        type,
+                        TextureFormat.Unknown,
+                        flags,
+                        TextureOperation.DefaultCbufSlot,
+                        imm);
+
+                    if ((componentMask & 4) != 0)
+                    {
+                        // Skip first 2 components if necessary.
+                        if ((componentMask & 1) != 0)
+                        {
+                            GetDest();
+                        }
+
+                        if ((componentMask & 2) != 0)
+                        {
+                            GetDest();
+                        }
+
+                        Operand d = GetDest();
+
+                        if (d != null)
+                        {
+                            context.Copy(d, context.TextureQuerySamples(type, flags, setAndBinding, sources));
+                        }
+                    }
+                    break;
+
+                default:
+                    context.TranslatorContext.GpuAccessor.Log($"Invalid or unsupported query type \"{query}\".");
+                    break;
             }
+        }
+
+        private static void EmitTextureSample(
+            EmitterContext context,
+            SamplerType type,
+            TextureFlags flags,
+            int handle,
+            int componentMask,
+            Operand[] dests,
+            Operand[] sources)
+        {
+            SetBindingPair setAndBinding = flags.HasFlag(TextureFlags.Bindless) ? default : context.ResourceManager.GetTextureOrImageBinding(
+                Instruction.TextureSample,
+                type,
+                TextureFormat.Unknown,
+                flags,
+                TextureOperation.DefaultCbufSlot,
+                handle);
+
+            context.TextureSample(type, flags, setAndBinding, componentMask, dests, sources);
         }
 
         private static SamplerType ConvertSamplerType(TexDim dimensions)
@@ -1195,7 +1214,7 @@ namespace Ryujinx.Graphics.Shader.Instructions
                 TexDim.Array3d => SamplerType.Texture3D | SamplerType.Array,
                 TexDim.Cube => SamplerType.TextureCube,
                 TexDim.ArrayCube => SamplerType.TextureCube | SamplerType.Array,
-                _ => throw new ArgumentException($"Invalid texture dimensions \"{dimensions}\".")
+                _ => throw new ArgumentException($"Invalid texture dimensions \"{dimensions}\"."),
             };
         }
 

@@ -2,18 +2,20 @@ using Ryujinx.Common.Logging;
 using Ryujinx.HLE.HOS.Ipc;
 using Ryujinx.HLE.HOS.Kernel;
 using Ryujinx.HLE.HOS.Kernel.Ipc;
+using Ryujinx.HLE.HOS.Services.Apm;
 using Ryujinx.Horizon.Common;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 
 namespace Ryujinx.HLE.HOS.Services.Sm
 {
-    class IUserInterface : IpcService
+    partial class IUserInterface : IpcService
     {
-        private static Dictionary<string, Type> _services;
+        private static readonly Dictionary<string, Type> _services;
 
         private readonly SmRegistry _registry;
         private readonly ServerBase _commonServer;
@@ -28,7 +30,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 
         static IUserInterface()
         {
-            _services = Assembly.GetExecutingAssembly().GetTypes()
+            _services = typeof(IUserInterface).Assembly.GetTypes()
                 .SelectMany(type => type.GetCustomAttributes(typeof(ServiceAttribute), true)
                 .Select(service => (((ServiceAttribute)service).Name, type)))
                 .ToDictionary(service => service.Name, service => service.type);
@@ -68,7 +70,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
                 return ResultCode.InvalidName;
             }
 
-            KSession session = new KSession(context.Device.System.KernelContext);
+            KSession session = new(context.Device.System.KernelContext);
 
             if (_registry.TryGetService(name, out KPort port))
             {
@@ -94,9 +96,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
                 {
                     ServiceAttribute serviceAttribute = (ServiceAttribute)type.GetCustomAttributes(typeof(ServiceAttribute)).First(service => ((ServiceAttribute)service).Name == name);
 
-                    IpcService service = serviceAttribute.Parameter != null
-                        ? (IpcService)Activator.CreateInstance(type, context, serviceAttribute.Parameter)
-                        : (IpcService)Activator.CreateInstance(type, context);
+                    IpcService service = GetServiceInstance(type, context, serviceAttribute.Parameter);
 
                     service.TrySetServer(_commonServer);
                     service.Server.AddSessionObj(session.ServerSession, service);
@@ -182,7 +182,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 
             Logger.Debug?.Print(LogClass.ServiceSm, $"Register \"{name}\".");
 
-            KPort port = new KPort(context.Device.System.KernelContext, maxSessions, isLight, null);
+            KPort port = new(context.Device.System.KernelContext, maxSessions, isLight, null);
 
             if (!_registry.TryRegister(name, port))
             {
@@ -215,9 +215,10 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 
             context.RequestData.BaseStream.Seek(namePosition + 8, SeekOrigin.Begin);
 
+#pragma warning disable IDE0059 // Remove unnecessary value assignment
             bool isLight = (context.RequestData.ReadInt32() & 1) != 0;
-
             int maxSessions = context.RequestData.ReadInt32();
+#pragma warning restore IDE0059
 
             if (string.IsNullOrEmpty(name))
             {
@@ -234,7 +235,7 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 
         private static string ReadName(ServiceCtx context)
         {
-            string name = string.Empty;
+            StringBuilder nameBuilder = new();
 
             for (int index = 0; index < 8 &&
                 context.RequestData.BaseStream.Position <
@@ -244,11 +245,11 @@ namespace Ryujinx.HLE.HOS.Services.Sm
 
                 if (chr >= 0x20 && chr < 0x7f)
                 {
-                    name += (char)chr;
+                    nameBuilder.Append((char)chr);
                 }
             }
 
-            return name;
+            return nameBuilder.ToString();
         }
 
         public override void DestroyAtExit()

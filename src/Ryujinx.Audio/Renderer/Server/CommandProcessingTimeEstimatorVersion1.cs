@@ -8,8 +8,8 @@ namespace Ryujinx.Audio.Renderer.Server
     /// </summary>
     public class CommandProcessingTimeEstimatorVersion1 : ICommandProcessingTimeEstimator
     {
-        private uint _sampleCount;
-        private uint _bufferCount;
+        private readonly uint _sampleCount;
+        private readonly uint _bufferCount;
 
         public CommandProcessingTimeEstimatorVersion1(uint sampleCount, uint bufferCount)
         {
@@ -170,7 +170,7 @@ namespace Ryujinx.Audio.Renderer.Server
             return 0;
         }
 
-        public uint Estimate(GroupedBiquadFilterCommand command)
+        public uint Estimate(MultiTapBiquadFilterCommand command)
         {
             return 0;
         }
@@ -181,6 +181,16 @@ namespace Ryujinx.Audio.Renderer.Server
         }
 
         public uint Estimate(CompressorCommand command)
+        {
+            return 0;
+        }
+
+        public uint Estimate(BiquadFilterAndMixCommand command)
+        {
+            return 0;
+        }
+
+        public uint Estimate(MultiTapBiquadFilterAndMixCommand command)
         {
             return 0;
         }

@@ -1,6 +1,7 @@
 using Ryujinx.Audio.Renderer.Dsp.State;
 using Ryujinx.Audio.Renderer.Parameter;
 using Ryujinx.Audio.Renderer.Parameter.Effect;
+using Ryujinx.Audio.Renderer.Server.Effect;
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -27,7 +28,14 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
         private LimiterParameter _parameter;
 
-        public LimiterCommandVersion2(uint bufferOffset, LimiterParameter parameter, Memory<LimiterState> state, Memory<EffectResultState> resultState, bool isEnabled, ulong workBuffer, int nodeId)
+        public LimiterCommandVersion2(
+            uint bufferOffset,
+            LimiterParameter parameter,
+            Memory<LimiterState> state,
+            Memory<EffectResultState> resultState,
+            bool isEnabled,
+            ulong workBuffer,
+            int nodeId)
         {
             Enabled = true;
             NodeId = nodeId;
@@ -41,10 +49,10 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
             InputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
             OutputBufferIndices = new ushort[Constants.VoiceChannelCountMax];
 
-            for (int i = 0; i < Parameter.ChannelCount; i++)
+            for (int i = 0; i < _parameter.ChannelCount; i++)
             {
-                InputBufferIndices[i] = (ushort)(bufferOffset + Parameter.Input[i]);
-                OutputBufferIndices[i] = (ushort)(bufferOffset + Parameter.Output[i]);
+                InputBufferIndices[i] = (ushort)(bufferOffset + _parameter.Input[i]);
+                OutputBufferIndices[i] = (ushort)(bufferOffset + _parameter.Output[i]);
             }
         }
 
@@ -54,13 +62,13 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
             if (IsEffectEnabled)
             {
-                if (Parameter.Status == Server.Effect.UsageState.Invalid)
+                if (_parameter.Status == UsageState.Invalid)
                 {
                     state = new LimiterState(ref _parameter, WorkBuffer);
                 }
-                else if (Parameter.Status == Server.Effect.UsageState.New)
+                else if (_parameter.Status == UsageState.New)
                 {
-                    state.UpdateParameter(ref _parameter);
+                    LimiterState.UpdateParameter(ref _parameter);
                 }
             }
 
@@ -69,63 +77,63 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
         private unsafe void ProcessLimiter(CommandList context, ref LimiterState state)
         {
-            Debug.Assert(Parameter.IsChannelCountValid());
+            Debug.Assert(_parameter.IsChannelCountValid());
 
-            if (IsEffectEnabled && Parameter.IsChannelCountValid())
+            if (IsEffectEnabled && _parameter.IsChannelCountValid())
             {
-                if (!ResultState.IsEmpty && Parameter.StatisticsReset)
+                if (!ResultState.IsEmpty && _parameter.StatisticsReset)
                 {
                     ref LimiterStatistics statistics = ref MemoryMarshal.Cast<byte, LimiterStatistics>(ResultState.Span[0].SpecificData)[0];
 
                     statistics.Reset();
                 }
 
-                Span<IntPtr> inputBuffers = stackalloc IntPtr[Parameter.ChannelCount];
-                Span<IntPtr> outputBuffers = stackalloc IntPtr[Parameter.ChannelCount];
+                Span<IntPtr> inputBuffers = stackalloc IntPtr[_parameter.ChannelCount];
+                Span<IntPtr> outputBuffers = stackalloc IntPtr[_parameter.ChannelCount];
 
-                for (int i = 0; i < Parameter.ChannelCount; i++)
+                for (int i = 0; i < _parameter.ChannelCount; i++)
                 {
                     inputBuffers[i] = context.GetBufferPointer(InputBufferIndices[i]);
                     outputBuffers[i] = context.GetBufferPointer(OutputBufferIndices[i]);
                 }
 
-                for (int channelIndex = 0; channelIndex < Parameter.ChannelCount; channelIndex++)
+                for (int channelIndex = 0; channelIndex < _parameter.ChannelCount; channelIndex++)
                 {
                     for (int sampleIndex = 0; sampleIndex < context.SampleCount; sampleIndex++)
                     {
                         float rawInputSample = *((float*)inputBuffers[channelIndex] + sampleIndex);
 
-                        float inputSample = (rawInputSample / short.MaxValue) * Parameter.InputGain;
+                        float inputSample = (rawInputSample / short.MaxValue) * _parameter.InputGain;
 
                         float sampleInputMax = Math.Abs(inputSample);
 
-                        float inputCoefficient = Parameter.ReleaseCoefficient;
+                        float inputCoefficient = _parameter.ReleaseCoefficient;
 
                         if (sampleInputMax > state.DetectorAverage[channelIndex].Read())
                         {
-                            inputCoefficient = Parameter.AttackCoefficient;
+                            inputCoefficient = _parameter.AttackCoefficient;
                         }
 
                         float detectorValue = state.DetectorAverage[channelIndex].Update(sampleInputMax, inputCoefficient);
                         float attenuation = 1.0f;
 
-                        if (detectorValue > Parameter.Threshold)
+                        if (detectorValue > _parameter.Threshold)
                         {
-                            attenuation = Parameter.Threshold / detectorValue;
+                            attenuation = _parameter.Threshold / detectorValue;
                         }
 
-                        float outputCoefficient = Parameter.ReleaseCoefficient;
+                        float outputCoefficient = _parameter.ReleaseCoefficient;
 
                         if (state.CompressionGainAverage[channelIndex].Read() > attenuation)
                         {
-                            outputCoefficient = Parameter.AttackCoefficient;
+                            outputCoefficient = _parameter.AttackCoefficient;
                         }
 
                         float compressionGain = state.CompressionGainAverage[channelIndex].Update(attenuation, outputCoefficient);
 
-                        ref float delayedSample = ref state.DelayedSampleBuffer[channelIndex * Parameter.DelayBufferSampleCountMax + state.DelayedSampleBufferPosition[channelIndex]];
+                        ref float delayedSample = ref state.DelayedSampleBuffer[channelIndex * _parameter.DelayBufferSampleCountMax + state.DelayedSampleBufferPosition[channelIndex]];
 
-                        float outputSample = delayedSample * compressionGain * Parameter.OutputGain;
+                        float outputSample = delayedSample * compressionGain * _parameter.OutputGain;
 
                         *((float*)outputBuffers[channelIndex] + sampleIndex) = outputSample * short.MaxValue;
 
@@ -133,9 +141,9 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
 
                         state.DelayedSampleBufferPosition[channelIndex]++;
 
-                        while (state.DelayedSampleBufferPosition[channelIndex] >= Parameter.DelayBufferSampleCountMin)
+                        while (state.DelayedSampleBufferPosition[channelIndex] >= _parameter.DelayBufferSampleCountMin)
                         {
-                            state.DelayedSampleBufferPosition[channelIndex] -= Parameter.DelayBufferSampleCountMin;
+                            state.DelayedSampleBufferPosition[channelIndex] -= _parameter.DelayBufferSampleCountMin;
                         }
 
                         if (!ResultState.IsEmpty)
@@ -150,7 +158,7 @@ namespace Ryujinx.Audio.Renderer.Dsp.Command
             }
             else
             {
-                for (int i = 0; i < Parameter.ChannelCount; i++)
+                for (int i = 0; i < _parameter.ChannelCount; i++)
                 {
                     if (InputBufferIndices[i] != OutputBufferIndices[i])
                     {

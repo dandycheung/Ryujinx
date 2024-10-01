@@ -1,4 +1,4 @@
-﻿using OpenTK.Audio.OpenAL;
+using OpenTK.Audio.OpenAL;
 using Ryujinx.Audio.Common;
 using Ryujinx.Audio.Integration;
 using Ryujinx.Memory;
@@ -18,7 +18,26 @@ namespace Ryujinx.Audio.Backends.OpenAL
         private readonly ManualResetEvent _pauseEvent;
         private readonly ConcurrentDictionary<OpenALHardwareDeviceSession, byte> _sessions;
         private bool _stillRunning;
-        private Thread _updaterThread;
+        private readonly Thread _updaterThread;
+
+        private float _volume;
+
+        public float Volume
+        {
+            get
+            {
+                return _volume;
+            }
+            set
+            {
+                _volume = value;
+
+                foreach (OpenALHardwareDeviceSession session in _sessions.Keys)
+                {
+                    session.UpdateMasterVolume(value);
+                }
+            }
+        }
 
         public OpenALHardwareDeviceDriver()
         {
@@ -31,8 +50,10 @@ namespace Ryujinx.Audio.Backends.OpenAL
             _stillRunning = true;
             _updaterThread = new Thread(Update)
             {
-                Name = "HardwareDeviceDriver.OpenAL"
+                Name = "HardwareDeviceDriver.OpenAL",
             };
+
+            _volume = 1f;
 
             _updaterThread.Start();
         }
@@ -52,7 +73,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
             }
         }
 
-        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount, float volume)
+        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
         {
             if (channelCount == 0)
             {
@@ -73,7 +94,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
                 throw new ArgumentException($"{channelCount}");
             }
 
-            OpenALHardwareDeviceSession session = new OpenALHardwareDeviceSession(this, memoryManager, sampleFormat, sampleRate, channelCount, volume);
+            OpenALHardwareDeviceSession session = new(this, memoryManager, sampleFormat, sampleRate, channelCount);
 
             _sessions.TryAdd(session, 0);
 
@@ -123,6 +144,7 @@ namespace Ryujinx.Audio.Backends.OpenAL
 
         public void Dispose()
         {
+            GC.SuppressFinalize(this);
             Dispose(true);
         }
 

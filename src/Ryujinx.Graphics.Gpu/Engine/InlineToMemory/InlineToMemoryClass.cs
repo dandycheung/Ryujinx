@@ -1,4 +1,5 @@
-﻿using Ryujinx.Common;
+using Ryujinx.Common;
+using Ryujinx.Common.Memory;
 using Ryujinx.Graphics.Device;
 using Ryujinx.Graphics.Texture;
 using System;
@@ -53,7 +54,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.InlineToMemory
                 _state = new DeviceState<InlineToMemoryClassState>(new Dictionary<string, RwCallback>
                 {
                     { nameof(InlineToMemoryClassState.LaunchDma), new RwCallback(LaunchDma, null) },
-                    { nameof(InlineToMemoryClassState.LoadInlineData), new RwCallback(LoadInlineData, null) }
+                    { nameof(InlineToMemoryClassState.LoadInlineData), new RwCallback(LoadInlineData, null) },
                 });
             }
         }
@@ -134,7 +135,7 @@ namespace Ryujinx.Graphics.Gpu.Engine.InlineToMemory
             if (!_finished)
             {
                 int copySize = Math.Min(data.Length, _buffer.Length - _offset);
-                data.Slice(0, copySize).CopyTo(new Span<int>(_buffer).Slice(_offset, copySize));
+                data[..copySize].CopyTo(new Span<int>(_buffer).Slice(_offset, copySize));
 
                 _offset += copySize;
 
@@ -169,11 +170,11 @@ namespace Ryujinx.Graphics.Gpu.Engine.InlineToMemory
         {
             var memoryManager = _channel.MemoryManager;
 
-            var data = MemoryMarshal.Cast<int, byte>(_buffer).Slice(0, _size);
+            var data = MemoryMarshal.Cast<int, byte>(_buffer)[.._size];
 
             if (_isLinear && _lineCount == 1)
             {
-                memoryManager.WriteTrackedResource(_dstGpuVa, data.Slice(0, _lineLengthIn));
+                memoryManager.WriteTrackedResource(_dstGpuVa, data[.._lineLengthIn]);
                 _context.AdvanceSequence();
             }
             else
@@ -198,7 +199,8 @@ namespace Ryujinx.Graphics.Gpu.Engine.InlineToMemory
                     if (target != null)
                     {
                         target.SynchronizeMemory();
-                        target.SetData(data, 0, 0, new GAL.Rectangle<int>(_dstX, _dstY, _lineLengthIn / target.Info.FormatInfo.BytesPerPixel, _lineCount));
+                        var dataCopy = MemoryOwner<byte>.RentCopy(data);
+                        target.SetData(dataCopy, 0, 0, new GAL.Rectangle<int>(_dstX, _dstY, _lineLengthIn / target.Info.FormatInfo.BytesPerPixel, _lineCount));
                         target.SignalModified();
 
                         return;

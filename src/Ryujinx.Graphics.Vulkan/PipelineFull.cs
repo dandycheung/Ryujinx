@@ -1,4 +1,4 @@
-﻿using Ryujinx.Graphics.GAL;
+using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Vulkan.Queries;
 using Silk.NET.Vulkan;
 using System;
@@ -14,18 +14,22 @@ namespace Ryujinx.Graphics.Vulkan
         private CounterQueueEvent _activeConditionalRender;
 
         private readonly List<BufferedQuery> _pendingQueryCopies;
+        private readonly List<BufferHolder> _activeBufferMirrors;
 
         private ulong _byteWeight;
 
-        private List<BufferHolder> _backingSwaps;
+        private readonly List<BufferHolder> _backingSwaps;
 
         public PipelineFull(VulkanRenderer gd, Device device) : base(gd, device)
         {
             _activeQueries = new List<(QueryPool, bool)>();
             _pendingQueryCopies = new();
             _backingSwaps = new();
+            _activeBufferMirrors = new();
 
             CommandBuffer = (Cbs = gd.CommandBufferPool.Rent()).CommandBuffer;
+
+            IsMainPipeline = true;
         }
 
         private void CopyPendingQuery()
@@ -45,11 +49,12 @@ namespace Ryujinx.Graphics.Vulkan
                 return;
             }
 
-            if (componentMask != 0xf)
+            if (componentMask != 0xf || Gd.IsQualcommProprietary)
             {
                 // We can't use CmdClearAttachments if not writing all components,
                 // because on Vulkan, the pipeline state does not affect clears.
-                var dstTexture = FramebufferParams.GetAttachment(index);
+                // On proprietary Adreno drivers, CmdClearAttachments appears to execute out of order, so it's better to not use it at all.
+                var dstTexture = FramebufferParams.GetColorView(index);
                 if (dstTexture == null)
                 {
                     return;
@@ -69,13 +74,49 @@ namespace Ryujinx.Graphics.Vulkan
                     componentMask,
                     (int)FramebufferParams.Width,
                     (int)FramebufferParams.Height,
-                    FramebufferParams.AttachmentFormats[index],
                     FramebufferParams.GetAttachmentComponentType(index),
                     ClearScissor);
             }
             else
             {
                 ClearRenderTargetColor(index, layer, layerCount, color);
+            }
+        }
+
+        public void ClearRenderTargetDepthStencil(int layer, int layerCount, float depthValue, bool depthMask, int stencilValue, int stencilMask)
+        {
+            if (FramebufferParams == null)
+            {
+                return;
+            }
+
+            if ((stencilMask != 0 && stencilMask != 0xff) || Gd.IsQualcommProprietary)
+            {
+                // We can't use CmdClearAttachments if not clearing all (mask is all ones, 0xFF) or none (mask is 0) of the stencil bits,
+                // because on Vulkan, the pipeline state does not affect clears.
+                // On proprietary Adreno drivers, CmdClearAttachments appears to execute out of order, so it's better to not use it at all.
+                var dstTexture = FramebufferParams.GetDepthStencilView();
+                if (dstTexture == null)
+                {
+                    return;
+                }
+
+                // TODO: Clear only the specified layer.
+                Gd.HelperShader.Clear(
+                    Gd,
+                    dstTexture,
+                    depthValue,
+                    depthMask,
+                    stencilValue,
+                    stencilMask,
+                    (int)FramebufferParams.Width,
+                    (int)FramebufferParams.Height,
+                    FramebufferParams.AttachmentFormats[FramebufferParams.AttachmentsCount - 1],
+                    ClearScissor);
+            }
+            else
+            {
+                ClearRenderTargetDepthStencil(layer, layerCount, depthValue, depthMask, stencilValue, stencilMask != 0);
             }
         }
 
@@ -116,15 +157,15 @@ namespace Ryujinx.Graphics.Vulkan
 
                     if (Gd.Capabilities.SupportsConditionalRendering)
                     {
-                        var buffer = evt.GetBuffer().Get(Cbs, 0, sizeof(long)).Value;
-                        var flags = isEqual ? ConditionalRenderingFlagsEXT.InvertedBitExt : 0;
+                        // var buffer = evt.GetBuffer().Get(Cbs, 0, sizeof(long)).Value;
+                        // var flags = isEqual ? ConditionalRenderingFlagsEXT.InvertedBitExt : 0;
 
-                        var conditionalRenderingBeginInfo = new ConditionalRenderingBeginInfoEXT()
-                        {
-                            SType = StructureType.ConditionalRenderingBeginInfoExt,
-                            Buffer = buffer,
-                            Flags = flags
-                        };
+                        // var conditionalRenderingBeginInfo = new ConditionalRenderingBeginInfoEXT
+                        // {
+                        //     SType = StructureType.ConditionalRenderingBeginInfoExt,
+                        //     Buffer = buffer,
+                        //     Flags = flags,
+                        // };
 
                         // Gd.ConditionalRenderingApi.CmdBeginConditionalRendering(CommandBuffer, conditionalRenderingBeginInfo);
                     }
@@ -156,10 +197,7 @@ namespace Ryujinx.Graphics.Vulkan
 
         public CommandBufferScoped GetPreloadCommandBuffer()
         {
-            if (PreloadCbs == null)
-            {
-                PreloadCbs = Gd.CommandBufferPool.Rent();
-            }
+            PreloadCbs ??= Gd.CommandBufferPool.Rent();
 
             return PreloadCbs.Value;
         }
@@ -188,20 +226,6 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        private void TryBackingSwaps()
-        {
-            CommandBufferScoped? cbs = null;
-
-            _backingSwaps.RemoveAll((holder) => holder.TryBackingSwap(ref cbs));
-
-            cbs?.Dispose();
-        }
-
-        public void AddBackingSwap(BufferHolder holder)
-        {
-            _backingSwaps.Add(holder);
-        }
-
         public void Restore()
         {
             if (Pipeline != null)
@@ -211,7 +235,10 @@ namespace Ryujinx.Graphics.Vulkan
 
             SignalCommandBufferChange();
 
-            DynamicState.ReplayIfDirty(Gd.Api, CommandBuffer);
+            if (Pipeline != null && Pbp == PipelineBindPoint.Graphics)
+            {
+                DynamicState.ReplayIfDirty(Gd, CommandBuffer);
+            }
         }
 
         public void FlushCommandsImpl()
@@ -232,10 +259,17 @@ namespace Ryujinx.Graphics.Vulkan
                 PreloadCbs = null;
             }
 
+            Gd.Barriers.Flush(Cbs, false, null, null);
             CommandBuffer = (Cbs = Gd.CommandBufferPool.ReturnAndRent(Cbs)).CommandBuffer;
             Gd.RegisterFlush();
 
             // Restore per-command buffer state.
+            foreach (BufferHolder buffer in _activeBufferMirrors)
+            {
+                buffer.ClearMirrors();
+            }
+
+            _activeBufferMirrors.Clear();
 
             foreach ((var queryPool, var isOcclusion) in _activeQueries)
             {
@@ -247,9 +281,12 @@ namespace Ryujinx.Graphics.Vulkan
 
             Gd.ResetCounterPool();
 
-            TryBackingSwaps();
-
             Restore();
+        }
+
+        public void RegisterActiveMirror(BufferHolder buffer)
+        {
+            _activeBufferMirrors.Add(buffer);
         }
 
         public void BeginQuery(BufferedQuery query, QueryPool pool, bool needsReset, bool isOcclusion, bool fromSamplePool)

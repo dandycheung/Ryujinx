@@ -1,8 +1,10 @@
-﻿using Ryujinx.Audio.Backends.Common;
+using Ryujinx.Audio.Backends.Common;
 using Ryujinx.Audio.Backends.SoundIo.Native;
 using Ryujinx.Audio.Common;
+using Ryujinx.Common.Memory;
 using Ryujinx.Memory;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -12,22 +14,24 @@ namespace Ryujinx.Audio.Backends.SoundIo
 {
     class SoundIoHardwareDeviceSession : HardwareDeviceSessionOutputBase
     {
-        private SoundIoHardwareDeviceDriver _driver;
-        private ConcurrentQueue<SoundIoAudioBuffer> _queuedBuffers;
+        private readonly SoundIoHardwareDeviceDriver _driver;
+        private readonly ConcurrentQueue<SoundIoAudioBuffer> _queuedBuffers;
         private SoundIoOutStreamContext _outputStream;
-        private DynamicRingBuffer _ringBuffer;
+        private readonly DynamicRingBuffer _ringBuffer;
         private ulong _playedSampleCount;
-        private ManualResetEvent _updateRequiredEvent;
+        private readonly ManualResetEvent _updateRequiredEvent;
+        private float _volume;
         private int _disposeState;
 
-        public SoundIoHardwareDeviceSession(SoundIoHardwareDeviceDriver driver, IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount, float requestedVolume) : base(memoryManager, requestedSampleFormat, requestedSampleRate, requestedChannelCount)
+        public SoundIoHardwareDeviceSession(SoundIoHardwareDeviceDriver driver, IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount) : base(memoryManager, requestedSampleFormat, requestedSampleRate, requestedChannelCount)
         {
             _driver = driver;
             _updateRequiredEvent = _driver.GetUpdateRequiredEvent();
             _queuedBuffers = new ConcurrentQueue<SoundIoAudioBuffer>();
             _ringBuffer = new DynamicRingBuffer();
+            _volume = 1f;
 
-            SetupOutputStream(requestedVolume);
+            SetupOutputStream(driver.Volume);
         }
 
         private void SetupOutputStream(float requestedVolume)
@@ -35,7 +39,7 @@ namespace Ryujinx.Audio.Backends.SoundIo
             _outputStream = _driver.OpenStream(RequestedSampleFormat, RequestedSampleRate, RequestedChannelCount);
             _outputStream.WriteCallback += Update;
             _outputStream.Volume = requestedVolume;
-            // TODO: Setup other callbacks (errors, ect).
+            // TODO: Setup other callbacks (errors, etc.)
 
             _outputStream.Open();
         }
@@ -47,14 +51,14 @@ namespace Ryujinx.Audio.Backends.SoundIo
 
         public override float GetVolume()
         {
-            return _outputStream.Volume;
+            return _volume;
         }
 
         public override void PrepareToClose() { }
 
         public override void QueueBuffer(AudioBuffer buffer)
         {
-            SoundIoAudioBuffer driverBuffer = new SoundIoAudioBuffer(buffer.DataPointer, GetSampleCount(buffer));
+            SoundIoAudioBuffer driverBuffer = new(buffer.DataPointer, GetSampleCount(buffer));
 
             _ringBuffer.Write(buffer.Data, 0, buffer.Data.Length);
 
@@ -63,7 +67,14 @@ namespace Ryujinx.Audio.Backends.SoundIo
 
         public override void SetVolume(float volume)
         {
-            _outputStream.SetVolume(volume);
+            _volume = volume;
+
+            _outputStream.SetVolume(_driver.Volume * volume);
+        }
+
+        public void UpdateMasterVolume(float newVolume)
+        {
+            _outputStream.SetVolume(newVolume * _volume);
         }
 
         public override void Start()
@@ -81,7 +92,7 @@ namespace Ryujinx.Audio.Backends.SoundIo
             _driver.FlushContextEvents();
         }
 
-        public override void UnregisterBuffer(AudioBuffer buffer) {}
+        public override void UnregisterBuffer(AudioBuffer buffer) { }
 
         public override bool WasBufferFullyConsumed(AudioBuffer buffer)
         {
@@ -111,7 +122,9 @@ namespace Ryujinx.Audio.Backends.SoundIo
 
             int channelCount = areas.Length;
 
-            byte[] samples = new byte[frameCount * bytesPerFrame];
+            using SpanOwner<byte> samplesOwner = SpanOwner<byte>.Rent(frameCount * bytesPerFrame);
+
+            Span<byte> samples = samplesOwner.Span;
 
             _ringBuffer.Read(samples, 0, samples.Length);
 

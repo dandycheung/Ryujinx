@@ -7,7 +7,6 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
 using static Ryujinx.Audio.Constants;
 
 namespace Ryujinx.Audio.Renderer.Server.Mix
@@ -66,7 +65,7 @@ namespace Ryujinx.Audio.Renderer.Server.Mix
         /// <summary>
         /// The effect processing order storage.
         /// </summary>
-        private IntPtr _effectProcessingOrderArrayPointer;
+        private readonly IntPtr _effectProcessingOrderArrayPointer;
 
         /// <summary>
         /// The max element count that can be found in the effect processing order storage.
@@ -120,7 +119,7 @@ namespace Ryujinx.Audio.Renderer.Server.Mix
         /// <summary>
         /// The array used to order effects associated to this mix.
         /// </summary>
-        public Span<int> EffectProcessingOrderArray
+        public readonly Span<int> EffectProcessingOrderArray
         {
             get
             {
@@ -175,7 +174,7 @@ namespace Ryujinx.Audio.Renderer.Server.Mix
         /// <summary>
         /// Clear the <see cref="EffectProcessingOrderArray"/> to its default state.
         /// </summary>
-        public void ClearEffectProcessingOrder()
+        public readonly void ClearEffectProcessingOrder()
         {
             EffectProcessingOrderArray.Fill(-1);
         }
@@ -184,7 +183,7 @@ namespace Ryujinx.Audio.Renderer.Server.Mix
         /// Return true if the mix has any destinations.
         /// </summary>
         /// <returns>True if the mix has any destinations.</returns>
-        public bool HasAnyDestination()
+        public readonly bool HasAnyDestination()
         {
             return DestinationMixId != UnusedMixId || DestinationSplitterId != UnusedSplitterId;
         }
@@ -196,7 +195,7 @@ namespace Ryujinx.Audio.Renderer.Server.Mix
         /// <param name="parameter">The input parameter of the mix.</param>
         /// <param name="splitterContext">The splitter context.</param>
         /// <returns>Return true, new connections were done on the adjacency matrix.</returns>
-        private bool UpdateConnection(EdgeMatrix edgeMatrix, ref MixParameter parameter, ref SplitterContext splitterContext)
+        private bool UpdateConnection(EdgeMatrix edgeMatrix, in MixParameter parameter, ref SplitterContext splitterContext)
         {
             bool hasNewConnections;
 
@@ -226,11 +225,11 @@ namespace Ryujinx.Audio.Renderer.Server.Mix
 
                     for (int i = 0; i < splitter.DestinationCount; i++)
                     {
-                        Span<SplitterDestination> destination = splitter.GetData(i);
+                        SplitterDestination destination = splitter.GetData(i);
 
-                        if (!destination.IsEmpty)
+                        if (!destination.IsNull)
                         {
-                            int destinationMixId = destination[0].DestinationId;
+                            int destinationMixId = destination.DestinationId;
 
                             if (destinationMixId != UnusedMixId)
                             {
@@ -260,7 +259,7 @@ namespace Ryujinx.Audio.Renderer.Server.Mix
         /// <param name="splitterContext">The splitter context.</param>
         /// <param name="behaviourContext">The behaviour context.</param>
         /// <returns>Return true if the mix was changed.</returns>
-        public bool Update(EdgeMatrix edgeMatrix, ref MixParameter parameter, EffectContext effectContext, SplitterContext splitterContext, BehaviourContext behaviourContext)
+        public bool Update(EdgeMatrix edgeMatrix, in MixParameter parameter, EffectContext effectContext, SplitterContext splitterContext, BehaviourContext behaviourContext)
         {
             bool isDirty;
 
@@ -274,7 +273,7 @@ namespace Ryujinx.Audio.Renderer.Server.Mix
 
             if (behaviourContext.IsSplitterSupported())
             {
-                isDirty = UpdateConnection(edgeMatrix, ref parameter, ref splitterContext);
+                isDirty = UpdateConnection(edgeMatrix, in parameter, ref splitterContext);
             }
             else
             {

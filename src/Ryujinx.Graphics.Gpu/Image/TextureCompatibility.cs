@@ -2,6 +2,8 @@ using Ryujinx.Common;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Texture;
 using System;
+using System.Diagnostics;
+using System.Numerics;
 
 namespace Ryujinx.Graphics.Gpu.Image
 {
@@ -35,7 +37,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             Astc10x8,
             Astc10x10,
             Astc12x10,
-            Astc12x12
+            Astc12x12,
         }
 
         /// <summary>
@@ -226,7 +228,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             // D32F and R32F texture have the same representation internally,
             // however the R32F format is used to sample from depth textures.
-            if (lhs.FormatInfo.Format == Format.D32Float && rhs.FormatInfo.Format == Format.R32Float && (forSampler || depthAlias))
+            if (IsValidDepthAsColorAlias(lhs.FormatInfo.Format, rhs.FormatInfo.Format) && (forSampler || depthAlias))
             {
                 return TextureMatchQuality.FormatAlias;
             }
@@ -239,14 +241,13 @@ namespace Ryujinx.Graphics.Gpu.Image
                 {
                     return TextureMatchQuality.FormatAlias;
                 }
-
-                if (lhs.FormatInfo.Format == Format.D16Unorm && rhs.FormatInfo.Format == Format.R16Unorm)
+                else if ((lhs.FormatInfo.Format == Format.D24UnormS8Uint ||
+                          lhs.FormatInfo.Format == Format.S8UintD24Unorm ||
+                          lhs.FormatInfo.Format == Format.X8UintD24Unorm) && rhs.FormatInfo.Format == Format.B8G8R8A8Unorm)
                 {
                     return TextureMatchQuality.FormatAlias;
                 }
-
-                if ((lhs.FormatInfo.Format == Format.D24UnormS8Uint ||
-                     lhs.FormatInfo.Format == Format.S8UintD24Unorm) && rhs.FormatInfo.Format == Format.B8G8R8A8Unorm)
+                else if (lhs.FormatInfo.Format == Format.D32FloatS8Uint && rhs.FormatInfo.Format == Format.R32G32Float)
                 {
                     return TextureMatchQuality.FormatAlias;
                 }
@@ -345,7 +346,20 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (lhs.FormatInfo.BytesPerPixel != rhs.FormatInfo.BytesPerPixel && IsIncompatibleFormatAliasingAllowed(lhs.FormatInfo, rhs.FormatInfo))
             {
-                alignedWidthMatches = lhsSize.Width * lhs.FormatInfo.BytesPerPixel == rhsSize.Width * rhs.FormatInfo.BytesPerPixel;
+                // If the formats are incompatible, but the texture strides match,
+                // we might allow them to be copy compatible depending on the format.
+                // The strides are aligned because the format with higher bytes per pixel
+                // might need a bit of padding at the end due to one width not being a multiple of the other.
+
+                Debug.Assert((1 << BitOperations.Log2((uint)lhs.FormatInfo.BytesPerPixel)) == lhs.FormatInfo.BytesPerPixel);
+                Debug.Assert((1 << BitOperations.Log2((uint)rhs.FormatInfo.BytesPerPixel)) == rhs.FormatInfo.BytesPerPixel);
+
+                int alignment = Math.Max(lhs.FormatInfo.BytesPerPixel, rhs.FormatInfo.BytesPerPixel);
+
+                int lhsStride = BitUtils.AlignUp(lhsSize.Width * lhs.FormatInfo.BytesPerPixel, alignment);
+                int rhsStride = BitUtils.AlignUp(rhsSize.Width * rhs.FormatInfo.BytesPerPixel, alignment);
+
+                alignedWidthMatches = lhsStride == rhsStride;
             }
 
             TextureViewCompatibility result = TextureViewCompatibility.Full;
@@ -373,6 +387,13 @@ namespace Ryujinx.Graphics.Gpu.Image
                 int stride = BitUtils.AlignUp(Math.Max(1, lhs.Stride >> level), Constants.StrideAlignment);
 
                 return stride == rhs.Stride ? TextureViewCompatibility.CopyOnly : TextureViewCompatibility.LayoutIncompatible;
+            }
+            else if (lhs.Target.IsMultisample() != rhs.Target.IsMultisample() && alignedWidthMatches && lhsAlignedSize.Height == rhsAlignedSize.Height)
+            {
+                // Copy between multisample and non-multisample textures with mismatching size is allowed,
+                // as long aligned size matches.
+
+                return TextureViewCompatibility.CopyOnly;
             }
             else
             {
@@ -625,12 +646,27 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (lhsFormat.Format.IsDepthOrStencil() || rhsFormat.Format.IsDepthOrStencil())
             {
-                return FormatMatches(lhs, rhs, flags.HasFlag(TextureSearchFlags.ForSampler), flags.HasFlag(TextureSearchFlags.DepthAlias)) switch
+                bool forSampler = flags.HasFlag(TextureSearchFlags.ForSampler);
+                bool depthAlias = flags.HasFlag(TextureSearchFlags.DepthAlias);
+
+                TextureMatchQuality matchQuality = FormatMatches(lhs, rhs, forSampler, depthAlias);
+
+                if (matchQuality == TextureMatchQuality.Perfect)
                 {
-                    TextureMatchQuality.Perfect => TextureViewCompatibility.Full,
-                    TextureMatchQuality.FormatAlias => TextureViewCompatibility.FormatAlias,
-                    _ => TextureViewCompatibility.Incompatible
-                };
+                    return TextureViewCompatibility.Full;
+                }
+                else if (matchQuality == TextureMatchQuality.FormatAlias)
+                {
+                    return TextureViewCompatibility.FormatAlias;
+                }
+                else if (IsValidColorAsDepthAlias(lhsFormat.Format, rhsFormat.Format) || IsValidDepthAsColorAlias(lhsFormat.Format, rhsFormat.Format))
+                {
+                    return TextureViewCompatibility.CopyOnly;
+                }
+                else
+                {
+                    return TextureViewCompatibility.Incompatible;
+                }
             }
 
             if (IsFormatHostIncompatible(lhs, caps) || IsFormatHostIncompatible(rhs, caps))
@@ -660,6 +696,30 @@ namespace Ryujinx.Graphics.Gpu.Image
         }
 
         /// <summary>
+        /// Checks if it's valid to alias a color format as a depth format.
+        /// </summary>
+        /// <param name="lhsFormat">Source format to be checked</param>
+        /// <param name="rhsFormat">Target format to be checked</param>
+        /// <returns>True if it's valid to alias the formats</returns>
+        private static bool IsValidColorAsDepthAlias(Format lhsFormat, Format rhsFormat)
+        {
+            return (lhsFormat == Format.R32Float && rhsFormat == Format.D32Float) ||
+                   (lhsFormat == Format.R16Unorm && rhsFormat == Format.D16Unorm);
+        }
+
+        /// <summary>
+        /// Checks if it's valid to alias a depth format as a color format.
+        /// </summary>
+        /// <param name="lhsFormat">Source format to be checked</param>
+        /// <param name="rhsFormat">Target format to be checked</param>
+        /// <returns>True if it's valid to alias the formats</returns>
+        private static bool IsValidDepthAsColorAlias(Format lhsFormat, Format rhsFormat)
+        {
+            return (lhsFormat == Format.D32Float && rhsFormat == Format.R32Float) ||
+                   (lhsFormat == Format.D16Unorm && rhsFormat == Format.R16Unorm);
+        }
+
+        /// <summary>
         /// Checks if aliasing of two formats that would normally be considered incompatible be allowed,
         /// using copy dependencies.
         /// </summary>
@@ -678,7 +738,9 @@ namespace Ryujinx.Graphics.Gpu.Image
                 (lhsFormat, rhsFormat) = (rhsFormat, lhsFormat);
             }
 
-            return lhsFormat.Format == Format.R8Unorm && rhsFormat.Format == Format.R8G8B8A8Unorm;
+            return (lhsFormat.Format == Format.R8G8B8A8Unorm && rhsFormat.Format == Format.R32G32B32A32Float) ||
+                   (lhsFormat.Format == Format.R8Unorm && rhsFormat.Format == Format.R8G8B8A8Unorm) ||
+                   (lhsFormat.Format == Format.R8Unorm && rhsFormat.Format == Format.R32Uint);
         }
 
         /// <summary>
@@ -783,80 +845,33 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>Format class</returns>
         private static FormatClass GetFormatClass(Format format)
         {
-            switch (format)
+            return format switch
             {
-                case Format.Bc1RgbaSrgb:
-                case Format.Bc1RgbaUnorm:
-                    return FormatClass.Bc1Rgba;
-                case Format.Bc2Srgb:
-                case Format.Bc2Unorm:
-                    return FormatClass.Bc2;
-                case Format.Bc3Srgb:
-                case Format.Bc3Unorm:
-                    return FormatClass.Bc3;
-                case Format.Bc4Snorm:
-                case Format.Bc4Unorm:
-                    return FormatClass.Bc4;
-                case Format.Bc5Snorm:
-                case Format.Bc5Unorm:
-                    return FormatClass.Bc5;
-                case Format.Bc6HSfloat:
-                case Format.Bc6HUfloat:
-                    return FormatClass.Bc6;
-                case Format.Bc7Srgb:
-                case Format.Bc7Unorm:
-                    return FormatClass.Bc7;
-                case Format.Etc2RgbSrgb:
-                case Format.Etc2RgbUnorm:
-                    return FormatClass.Etc2Rgb;
-                case Format.Etc2RgbaSrgb:
-                case Format.Etc2RgbaUnorm:
-                    return FormatClass.Etc2Rgba;
-                case Format.Astc4x4Srgb:
-                case Format.Astc4x4Unorm:
-                    return FormatClass.Astc4x4;
-                case Format.Astc5x4Srgb:
-                case Format.Astc5x4Unorm:
-                    return FormatClass.Astc5x4;
-                case Format.Astc5x5Srgb:
-                case Format.Astc5x5Unorm:
-                    return FormatClass.Astc5x5;
-                case Format.Astc6x5Srgb:
-                case Format.Astc6x5Unorm:
-                    return FormatClass.Astc6x5;
-                case Format.Astc6x6Srgb:
-                case Format.Astc6x6Unorm:
-                    return FormatClass.Astc6x6;
-                case Format.Astc8x5Srgb:
-                case Format.Astc8x5Unorm:
-                    return FormatClass.Astc8x5;
-                case Format.Astc8x6Srgb:
-                case Format.Astc8x6Unorm:
-                    return FormatClass.Astc8x6;
-                case Format.Astc8x8Srgb:
-                case Format.Astc8x8Unorm:
-                    return FormatClass.Astc8x8;
-                case Format.Astc10x5Srgb:
-                case Format.Astc10x5Unorm:
-                    return FormatClass.Astc10x5;
-                case Format.Astc10x6Srgb:
-                case Format.Astc10x6Unorm:
-                    return FormatClass.Astc10x6;
-                case Format.Astc10x8Srgb:
-                case Format.Astc10x8Unorm:
-                    return FormatClass.Astc10x8;
-                case Format.Astc10x10Srgb:
-                case Format.Astc10x10Unorm:
-                    return FormatClass.Astc10x10;
-                case Format.Astc12x10Srgb:
-                case Format.Astc12x10Unorm:
-                    return FormatClass.Astc12x10;
-                case Format.Astc12x12Srgb:
-                case Format.Astc12x12Unorm:
-                    return FormatClass.Astc12x12;
-            }
-
-            return FormatClass.Unclassified;
+                Format.Bc1RgbaSrgb or Format.Bc1RgbaUnorm => FormatClass.Bc1Rgba,
+                Format.Bc2Srgb or Format.Bc2Unorm => FormatClass.Bc2,
+                Format.Bc3Srgb or Format.Bc3Unorm => FormatClass.Bc3,
+                Format.Bc4Snorm or Format.Bc4Unorm => FormatClass.Bc4,
+                Format.Bc5Snorm or Format.Bc5Unorm => FormatClass.Bc5,
+                Format.Bc6HSfloat or Format.Bc6HUfloat => FormatClass.Bc6,
+                Format.Bc7Srgb or Format.Bc7Unorm => FormatClass.Bc7,
+                Format.Etc2RgbSrgb or Format.Etc2RgbUnorm => FormatClass.Etc2Rgb,
+                Format.Etc2RgbaSrgb or Format.Etc2RgbaUnorm => FormatClass.Etc2Rgba,
+                Format.Astc4x4Srgb or Format.Astc4x4Unorm => FormatClass.Astc4x4,
+                Format.Astc5x4Srgb or Format.Astc5x4Unorm => FormatClass.Astc5x4,
+                Format.Astc5x5Srgb or Format.Astc5x5Unorm => FormatClass.Astc5x5,
+                Format.Astc6x5Srgb or Format.Astc6x5Unorm => FormatClass.Astc6x5,
+                Format.Astc6x6Srgb or Format.Astc6x6Unorm => FormatClass.Astc6x6,
+                Format.Astc8x5Srgb or Format.Astc8x5Unorm => FormatClass.Astc8x5,
+                Format.Astc8x6Srgb or Format.Astc8x6Unorm => FormatClass.Astc8x6,
+                Format.Astc8x8Srgb or Format.Astc8x8Unorm => FormatClass.Astc8x8,
+                Format.Astc10x5Srgb or Format.Astc10x5Unorm => FormatClass.Astc10x5,
+                Format.Astc10x6Srgb or Format.Astc10x6Unorm => FormatClass.Astc10x6,
+                Format.Astc10x8Srgb or Format.Astc10x8Unorm => FormatClass.Astc10x8,
+                Format.Astc10x10Srgb or Format.Astc10x10Unorm => FormatClass.Astc10x10,
+                Format.Astc12x10Srgb or Format.Astc12x10Unorm => FormatClass.Astc12x10,
+                Format.Astc12x12Srgb or Format.Astc12x12Unorm => FormatClass.Astc12x12,
+                _ => FormatClass.Unclassified,
+            };
         }
     }
 }

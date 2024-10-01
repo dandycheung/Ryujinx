@@ -1,19 +1,20 @@
-﻿using Ryujinx.Common;
+using Ryujinx.Common;
 using Ryujinx.Graphics.GAL;
 using Ryujinx.Graphics.Shader;
 using Ryujinx.Graphics.Shader.Translation;
 using Silk.NET.Vulkan;
 using System;
+using SamplerCreateInfo = Ryujinx.Graphics.GAL.SamplerCreateInfo;
 
 namespace Ryujinx.Graphics.Vulkan.Effects
 {
-    internal partial class FxaaPostProcessingEffect : IPostProcessingEffect
+    internal class FxaaPostProcessingEffect : IPostProcessingEffect
     {
         private readonly VulkanRenderer _renderer;
         private ISampler _samplerLinear;
         private ShaderCollection _shaderProgram;
 
-        private PipelineHelperShader _pipeline;
+        private readonly PipelineHelperShader _pipeline;
         private TextureView _texture;
 
         public FxaaPostProcessingEffect(VulkanRenderer renderer, Device device)
@@ -41,13 +42,13 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             var resourceLayout = new ResourceLayoutBuilder()
                 .Add(ResourceStages.Compute, ResourceType.UniformBuffer, 2)
                 .Add(ResourceStages.Compute, ResourceType.TextureAndSampler, 1)
-                .Add(ResourceStages.Compute, ResourceType.Image, 0).Build();
+                .Add(ResourceStages.Compute, ResourceType.Image, 0, true).Build();
 
-            _samplerLinear = _renderer.CreateSampler(GAL.SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
+            _samplerLinear = _renderer.CreateSampler(SamplerCreateInfo.Create(MinFilter.Linear, MagFilter.Linear));
 
             _shaderProgram = _renderer.CreateProgramWithMinimalLayout(new[]
             {
-                new ShaderSource(shader, ShaderStage.Compute, TargetLanguage.Spirv)
+                new ShaderSource(shader, ShaderStage.Compute, TargetLanguage.Spirv),
             }, resourceLayout);
         }
 
@@ -56,7 +57,7 @@ namespace Ryujinx.Graphics.Vulkan.Effects
             if (_texture == null || _texture.Width != view.Width || _texture.Height != view.Height)
             {
                 _texture?.Dispose();
-                _texture = _renderer.CreateTexture(view.Info, view.ScaleFactor) as TextureView;
+                _texture = _renderer.CreateTexture(view.Info) as TextureView;
             }
 
             _pipeline.SetCommandBuffer(cbs);
@@ -65,20 +66,18 @@ namespace Ryujinx.Graphics.Vulkan.Effects
 
             ReadOnlySpan<float> resolutionBuffer = stackalloc float[] { view.Width, view.Height };
             int rangeSize = resolutionBuffer.Length * sizeof(float);
-            var bufferHandle = _renderer.BufferManager.CreateWithHandle(_renderer, rangeSize);
+            using var buffer = _renderer.BufferManager.ReserveOrCreate(_renderer, cbs, rangeSize);
 
-            _renderer.BufferManager.SetData(bufferHandle, 0, resolutionBuffer);
+            buffer.Holder.SetDataUnchecked(buffer.Offset, resolutionBuffer);
 
-            var bufferRanges = new BufferRange(bufferHandle, 0, rangeSize);
-            _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, bufferRanges) });
+            _pipeline.SetUniformBuffers(stackalloc[] { new BufferAssignment(2, buffer.Range) });
 
             var dispatchX = BitUtils.DivRoundUp(view.Width, IPostProcessingEffect.LocalGroupSize);
             var dispatchY = BitUtils.DivRoundUp(view.Height, IPostProcessingEffect.LocalGroupSize);
 
-            _pipeline.SetImage(0, _texture, FormatTable.ConvertRgba8SrgbToUnorm(view.Info.Format));
+            _pipeline.SetImage(ShaderStage.Compute, 0, _texture.GetView(FormatTable.ConvertRgba8SrgbToUnorm(view.Info.Format)));
             _pipeline.DispatchCompute(dispatchX, dispatchY, 1);
 
-            _renderer.BufferManager.Delete(bufferHandle);
             _pipeline.ComputeBarrier();
 
             _pipeline.Finish();

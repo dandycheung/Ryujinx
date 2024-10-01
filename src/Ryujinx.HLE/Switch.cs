@@ -7,7 +7,7 @@ using Ryujinx.HLE.HOS;
 using Ryujinx.HLE.HOS.Services.Apm;
 using Ryujinx.HLE.HOS.Services.Hid;
 using Ryujinx.HLE.Loaders.Processes;
-using Ryujinx.HLE.Ui;
+using Ryujinx.HLE.UI;
 using Ryujinx.Memory;
 using System;
 
@@ -15,17 +15,17 @@ namespace Ryujinx.HLE
 {
     public class Switch : IDisposable
     {
-        public HLEConfiguration      Configuration     { get; }
+        public HLEConfiguration Configuration { get; }
         public IHardwareDeviceDriver AudioDeviceDriver { get; }
-        public MemoryBlock           Memory            { get; }
-        public GpuContext            Gpu               { get; }
-        public VirtualFileSystem     FileSystem        { get; }
-        public HOS.Horizon           System            { get; }
-        public ProcessLoader         Processes         { get; }
-        public PerformanceStatistics Statistics        { get; }
-        public Hid                   Hid               { get; }
-        public TamperMachine         TamperMachine     { get; }
-        public IHostUiHandler        UiHandler         { get; }
+        public MemoryBlock Memory { get; }
+        public GpuContext Gpu { get; }
+        public VirtualFileSystem FileSystem { get; }
+        public HOS.Horizon System { get; }
+        public ProcessLoader Processes { get; }
+        public PerformanceStatistics Statistics { get; }
+        public Hid Hid { get; }
+        public TamperMachine TamperMachine { get; }
+        public IHostUIHandler UIHandler { get; }
 
         public bool EnableDeviceVsync { get; set; } = true;
 
@@ -38,13 +38,14 @@ namespace Ryujinx.HLE
             ArgumentNullException.ThrowIfNull(configuration.UserChannelPersistence);
 
             Configuration = configuration;
-            FileSystem    = Configuration.VirtualFileSystem;
-            UiHandler     = Configuration.HostUiHandler;
+            FileSystem = Configuration.VirtualFileSystem;
+            UIHandler = Configuration.HostUIHandler;
 
             MemoryAllocationFlags memoryAllocationFlags = configuration.MemoryManagerMode == MemoryManagerMode.SoftwarePageTable
                 ? MemoryAllocationFlags.Reserve
                 : MemoryAllocationFlags.Reserve | MemoryAllocationFlags.Mirrorable;
 
+#pragma warning disable IDE0055 // Disable formatting
             AudioDeviceDriver = new CompatLayerHardwareDeviceDriver(Configuration.AudioDeviceDriver);
             Memory            = new MemoryBlock(Configuration.MemoryConfiguration.ToDramSize(), memoryAllocationFlags);
             Gpu               = new GpuContext(Configuration.GpuRenderer);
@@ -54,6 +55,7 @@ namespace Ryujinx.HLE
             Processes         = new ProcessLoader(this);
             TamperMachine     = new TamperMachine();
 
+            System.InitializeServices();
             System.State.SetLanguage(Configuration.SystemLanguage);
             System.State.SetRegion(Configuration.Region);
 
@@ -63,6 +65,7 @@ namespace Ryujinx.HLE
             System.EnablePtc                        = Configuration.EnablePtc;
             System.FsIntegrityCheckLevel            = Configuration.FsIntegrityCheckLevel;
             System.GlobalAccessLogMode              = Configuration.FsGlobalAccessLogMode;
+#pragma warning restore IDE0055
         }
 
         public bool LoadCart(string exeFsDir, string romFsFile = null)
@@ -70,9 +73,9 @@ namespace Ryujinx.HLE
             return Processes.LoadUnpackedNca(exeFsDir, romFsFile);
         }
 
-        public bool LoadXci(string xciFile)
+        public bool LoadXci(string xciFile, ulong applicationId = 0)
         {
-            return Processes.LoadXci(xciFile);
+            return Processes.LoadXci(xciFile, applicationId);
         }
 
         public bool LoadNca(string ncaFile)
@@ -80,9 +83,9 @@ namespace Ryujinx.HLE
             return Processes.LoadNca(ncaFile);
         }
 
-        public bool LoadNsp(string nspFile)
+        public bool LoadNsp(string nspFile, ulong applicationId = 0)
         {
-            return Processes.LoadNsp(nspFile);
+            return Processes.LoadNsp(nspFile, applicationId);
         }
 
         public bool LoadProgram(string fileName)
@@ -114,22 +117,22 @@ namespace Ryujinx.HLE
 
         public void SetVolume(float volume)
         {
-            System.SetVolume(Math.Clamp(volume, 0, 1));
+            AudioDeviceDriver.Volume = Math.Clamp(volume, 0f, 1f);
         }
 
         public float GetVolume()
         {
-            return System.GetVolume();
+            return AudioDeviceDriver.Volume;
         }
 
         public void EnableCheats()
         {
-            FileSystem.ModLoader.EnableCheats(Processes.ActiveApplication.ProgramId, TamperMachine);
+            ModLoader.EnableCheats(Processes.ActiveApplication.ProgramId, TamperMachine);
         }
 
         public bool IsAudioMuted()
         {
-            return System.GetVolume() == 0;
+            return AudioDeviceDriver.Volume == 0;
         }
 
         public void DisposeGpu()
@@ -139,6 +142,7 @@ namespace Ryujinx.HLE
 
         public void Dispose()
         {
+            GC.SuppressFinalize(this);
             Dispose(true);
         }
 

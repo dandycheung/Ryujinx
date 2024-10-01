@@ -1,4 +1,5 @@
-﻿using Ryujinx.Common;
+using Ryujinx.Common;
+using Ryujinx.Common.Memory;
 using Ryujinx.Common.Utilities;
 using Ryujinx.HLE.HOS.Services.SurfaceFlinger.Types;
 using System;
@@ -9,13 +10,13 @@ using System.Text;
 
 namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 {
-    class Parcel
+    sealed class Parcel : IDisposable
     {
-        private readonly byte[] _rawData;
+        private readonly MemoryOwner<byte> _rawDataOwner;
 
-        private Span<byte> Raw => new Span<byte>(_rawData);
+        private Span<byte> Raw => _rawDataOwner.Span;
 
-        private ref ParcelHeader Header => ref MemoryMarshal.Cast<byte, ParcelHeader>(_rawData)[0];
+        private ref ParcelHeader Header => ref MemoryMarshal.Cast<byte, ParcelHeader>(Raw)[0];
 
         private Span<byte> Payload => Raw.Slice((int)Header.PayloadOffset, (int)Header.PayloadSize);
 
@@ -24,30 +25,34 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         private int _payloadPosition;
         private int _objectPosition;
 
-        public Parcel(byte[] rawData)
+        private bool _isDisposed;
+
+        public Parcel(ReadOnlySpan<byte> data)
         {
-            _rawData  = rawData;
+            _rawDataOwner = MemoryOwner<byte>.RentCopy(data);
 
             _payloadPosition = 0;
-            _objectPosition  = 0;
+            _objectPosition = 0;
         }
 
         public Parcel(uint payloadSize, uint objectsSize)
         {
             uint headerSize = (uint)Unsafe.SizeOf<ParcelHeader>();
 
-            _rawData = new byte[BitUtils.AlignUp<uint>(headerSize + payloadSize + objectsSize, 4)];
+            _rawDataOwner = MemoryOwner<byte>.RentCleared(checked((int)BitUtils.AlignUp<uint>(headerSize + payloadSize + objectsSize, 4)));
 
-            Header.PayloadSize   = payloadSize;
-            Header.ObjectsSize   = objectsSize;
+            Header.PayloadSize = payloadSize;
+            Header.ObjectsSize = objectsSize;
             Header.PayloadOffset = headerSize;
-            Header.ObjectOffset  = Header.PayloadOffset + Header.ObjectsSize;
+            Header.ObjectOffset = Header.PayloadOffset + Header.ObjectsSize;
         }
 
         public string ReadInterfaceToken()
         {
             // Ignore the policy flags
+#pragma warning disable IDE0059 // Remove unnecessary value assignment
             int strictPolicy = ReadInt32();
+#pragma warning restore IDE0059
 
             return ReadString16();
         }
@@ -64,7 +69,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             ReadOnlySpan<byte> data = ReadInPlace((size + 1) * 2);
 
             // Return the unicode string without the last character (null terminator)
-            return Encoding.Unicode.GetString(data.Slice(0, size * 2));
+            return Encoding.Unicode.GetString(data[..(size * 2)]);
         }
 
         public int ReadInt32() => ReadUnmanagedType<int>();
@@ -77,7 +82,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             long flattenableSize = ReadInt64();
 
-            T result = new T();
+            T result = new();
 
             Debug.Assert(flattenableSize == result.GetFlattenedSize());
 
@@ -86,7 +91,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             return result;
         }
 
-        public T ReadUnmanagedType<T>() where T: unmanaged
+        public T ReadUnmanagedType<T>() where T : unmanaged
         {
             ReadOnlySpan<byte> data = ReadInPlace(Unsafe.SizeOf<T>());
 
@@ -105,8 +110,8 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         [StructLayout(LayoutKind.Sequential, Size = 0x28)]
         private struct FlatBinderObject
         {
-            public int  Type;
-            public int  Flags;
+            public int Type;
+            public int Flags;
             public long BinderId;
             public long Cookie;
 
@@ -115,12 +120,12 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             public Span<byte> ServiceName => MemoryMarshal.CreateSpan(ref _serviceNameStart, 0x8);
         }
 
-        public void WriteObject<T>(T obj, string serviceName) where T: IBinder
+        public void WriteObject<T>(T obj, string serviceName) where T : IBinder
         {
-            FlatBinderObject flatBinderObject = new FlatBinderObject
+            FlatBinderObject flatBinderObject = new()
             {
-                Type     = 2,
-                Flags    = 0,
+                Type = 2,
+                Flags = 0,
                 BinderId = HOSBinderDriverServer.GetBinderId(obj),
             };
 
@@ -130,7 +135,9 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
 
             // TODO: figure out what this value is
 
-            WriteInplaceObject(new byte[4] { 0, 0, 0, 0 });
+            Span<byte> fourBytes = stackalloc byte[4];
+
+            WriteInplaceObject(fourBytes);
         }
 
         public AndroidStrongPointer<T> ReadStrongPointer<T>() where T : unmanaged, IFlattenable
@@ -149,7 +156,7 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
             }
         }
 
-        public void WriteStrongPointer<T>(ref AndroidStrongPointer<T> value) where T: unmanaged, IFlattenable
+        public void WriteStrongPointer<T>(ref AndroidStrongPointer<T> value) where T : unmanaged, IFlattenable
         {
             WriteBoolean(!value.IsNull);
 
@@ -205,17 +212,27 @@ namespace Ryujinx.HLE.HOS.Services.SurfaceFlinger
         {
             uint headerSize = (uint)Unsafe.SizeOf<ParcelHeader>();
 
-            Header.PayloadSize   = (uint)_payloadPosition;
-            Header.ObjectsSize   = (uint)_objectPosition;
+            Header.PayloadSize = (uint)_payloadPosition;
+            Header.ObjectsSize = (uint)_objectPosition;
             Header.PayloadOffset = headerSize;
-            Header.ObjectOffset  = Header.PayloadOffset + Header.PayloadSize;
+            Header.ObjectOffset = Header.PayloadOffset + Header.PayloadSize;
         }
 
         public ReadOnlySpan<byte> Finish()
         {
             UpdateHeader();
 
-            return Raw.Slice(0, (int)(Header.PayloadSize + Header.ObjectsSize + Unsafe.SizeOf<ParcelHeader>()));
+            return Raw[..(int)(Header.PayloadSize + Header.ObjectsSize + Unsafe.SizeOf<ParcelHeader>())];
+        }
+
+        public void Dispose()
+        {
+            if (!_isDisposed)
+            {
+                _isDisposed = true;
+
+                _rawDataOwner.Dispose();
+            }
         }
     }
 }

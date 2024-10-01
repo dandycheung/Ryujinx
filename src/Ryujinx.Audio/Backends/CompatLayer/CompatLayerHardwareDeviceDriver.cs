@@ -6,16 +6,21 @@ using Ryujinx.Common.Logging;
 using Ryujinx.Memory;
 using System;
 using System.Threading;
-
 using static Ryujinx.Audio.Integration.IHardwareDeviceDriver;
 
 namespace Ryujinx.Audio.Backends.CompatLayer
 {
     public class CompatLayerHardwareDeviceDriver : IHardwareDeviceDriver
     {
-        private IHardwareDeviceDriver _realDriver;
+        private readonly IHardwareDeviceDriver _realDriver;
 
         public static bool IsSupported => true;
+
+        public float Volume
+        {
+            get => _realDriver.Volume;
+            set => _realDriver.Volume = value;
+        }
 
         public CompatLayerHardwareDeviceDriver(IHardwareDeviceDriver realDevice)
         {
@@ -24,6 +29,7 @@ namespace Ryujinx.Audio.Backends.CompatLayer
 
         public void Dispose()
         {
+            GC.SuppressFinalize(this);
             _realDriver.Dispose();
         }
 
@@ -49,7 +55,7 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 6 => SelectHardwareChannelCount(2),
                 2 => SelectHardwareChannelCount(1),
                 1 => throw new ArgumentException("No valid channel configuration found!"),
-                _ => throw new ArgumentException($"Invalid targetChannelCount {targetChannelCount}")
+                _ => throw new ArgumentException($"Invalid targetChannelCount {targetChannelCount}"),
             };
         }
 
@@ -90,7 +96,7 @@ namespace Ryujinx.Audio.Backends.CompatLayer
             throw new ArgumentException("No valid sample format configuration found!");
         }
 
-        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount, float volume)
+        public IHardwareDeviceSession OpenDeviceSession(Direction direction, IVirtualMemoryManager memoryManager, SampleFormat sampleFormat, uint sampleRate, uint channelCount)
         {
             if (channelCount == 0)
             {
@@ -102,15 +108,13 @@ namespace Ryujinx.Audio.Backends.CompatLayer
                 sampleRate = Constants.TargetSampleRate;
             }
 
-            volume = Math.Clamp(volume, 0, 1);
-
             if (!_realDriver.SupportsDirection(direction))
             {
                 if (direction == Direction.Input)
                 {
                     Logger.Warning?.Print(LogClass.Audio, "The selected audio backend doesn't support audio input, fallback to dummy...");
 
-                    return new DummyHardwareDeviceSessionInput(this, memoryManager, sampleFormat, sampleRate, channelCount);
+                    return new DummyHardwareDeviceSessionInput(this, memoryManager);
                 }
 
                 throw new NotImplementedException();
@@ -119,7 +123,7 @@ namespace Ryujinx.Audio.Backends.CompatLayer
             SampleFormat hardwareSampleFormat = SelectHardwareSampleFormat(sampleFormat);
             uint hardwareChannelCount = SelectHardwareChannelCount(channelCount);
 
-            IHardwareDeviceSession realSession = _realDriver.OpenDeviceSession(direction, memoryManager, hardwareSampleFormat, sampleRate, hardwareChannelCount, volume);
+            IHardwareDeviceSession realSession = _realDriver.OpenDeviceSession(direction, memoryManager, hardwareSampleFormat, sampleRate, hardwareChannelCount);
 
             if (hardwareChannelCount == channelCount && hardwareSampleFormat == sampleFormat)
             {
@@ -138,12 +142,12 @@ namespace Ryujinx.Audio.Backends.CompatLayer
 
             if (direction == Direction.Input)
             {
-                Logger.Warning?.Print(LogClass.Audio, $"The selected audio backend doesn't support the requested audio input configuration, fallback to dummy...");
+                Logger.Warning?.Print(LogClass.Audio, "The selected audio backend doesn't support the requested audio input configuration, fallback to dummy...");
 
                 // TODO: We currently don't support audio input upsampling/downsampling, implement this.
                 realSession.Dispose();
 
-                return new DummyHardwareDeviceSessionInput(this, memoryManager, sampleFormat, sampleRate, channelCount);
+                return new DummyHardwareDeviceSessionInput(this, memoryManager);
             }
 
             // It must be a HardwareDeviceSessionOutputBase.

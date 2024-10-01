@@ -15,7 +15,7 @@ namespace Ryujinx.Cpu
             public MemoryBlock Memory { get; private set; }
             public ulong Size { get; }
 
-            private struct Range : IComparable<Range>
+            private readonly struct Range : IComparable<Range>
             {
                 public ulong Offset { get; }
                 public ulong Size { get; }
@@ -40,7 +40,7 @@ namespace Ryujinx.Cpu
                 Size = size;
                 _freeRanges = new List<Range>
                 {
-                    new Range(0, size)
+                    new Range(0, size),
                 };
             }
 
@@ -143,7 +143,7 @@ namespace Ryujinx.Cpu
             }
         }
 
-        public PrivateMemoryAllocator(int blockAlignment, MemoryAllocationFlags allocationFlags) : base(blockAlignment, allocationFlags)
+        public PrivateMemoryAllocator(ulong blockAlignment, MemoryAllocationFlags allocationFlags) : base(blockAlignment, allocationFlags)
         {
         }
 
@@ -164,7 +164,7 @@ namespace Ryujinx.Cpu
     {
         private const ulong InvalidOffset = ulong.MaxValue;
 
-        public struct Allocation
+        public readonly struct Allocation
         {
             public T Block { get; }
             public ulong Offset { get; }
@@ -180,10 +180,10 @@ namespace Ryujinx.Cpu
 
         private readonly List<T> _blocks;
 
-        private readonly int _blockAlignment;
+        private readonly ulong _blockAlignment;
         private readonly MemoryAllocationFlags _allocationFlags;
 
-        public PrivateMemoryAllocatorImpl(int blockAlignment, MemoryAllocationFlags allocationFlags)
+        public PrivateMemoryAllocatorImpl(ulong blockAlignment, MemoryAllocationFlags allocationFlags)
         {
             _blocks = new List<T>();
             _blockAlignment = blockAlignment;
@@ -212,7 +212,7 @@ namespace Ryujinx.Cpu
                 }
             }
 
-            ulong blockAlignedSize = BitUtils.AlignUp(size, (ulong)_blockAlignment);
+            ulong blockAlignedSize = BitUtils.AlignUp(size, _blockAlignment);
 
             var memory = new MemoryBlock(blockAlignedSize, _allocationFlags);
             var newBlock = createBlock(memory, blockAlignedSize);

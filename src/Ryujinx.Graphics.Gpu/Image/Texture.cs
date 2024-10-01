@@ -119,7 +119,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         private bool _modifiedStale = true;
 
         private ITexture _arrayViewTexture;
-        private Target   _arrayViewTarget;
+        private Target _arrayViewTarget;
 
         private ITexture _flushHostTexture;
         private ITexture _setHostTexture;
@@ -149,6 +149,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// </summary>
         public bool HadPoolOwner { get; private set; }
 
+        /// <summary>
         /// Physical memory ranges where the texture data is located.
         /// </summary>
         public MultiRange Range { get; private set; }
@@ -278,7 +279,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 Debug.Assert(!isView);
 
                 TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor);
-                HostTexture = _context.Renderer.CreateTexture(createInfo, ScaleFactor);
+                HostTexture = _context.Renderer.CreateTexture(createInfo);
 
                 SynchronizeMemory(); // Load the data.
                 if (ScaleMode == TextureScaleMode.Scaled)
@@ -302,7 +303,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                     }
 
                     TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, ScaleFactor);
-                    HostTexture = _context.Renderer.CreateTexture(createInfo, ScaleFactor);
+                    HostTexture = _context.Renderer.CreateTexture(createInfo);
                 }
             }
         }
@@ -334,7 +335,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <returns>The child texture</returns>
         public Texture CreateView(TextureInfo info, SizeInfo sizeInfo, MultiRange range, int firstLayer, int firstLevel)
         {
-            Texture texture = new Texture(
+            Texture texture = new(
                 _context,
                 _physicalMemory,
                 info,
@@ -389,7 +390,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         {
             _views.Remove(texture);
 
-            Group.RemoveView(texture);
+            Group.RemoveView(_views, texture);
 
             texture._viewStorage = texture;
 
@@ -490,7 +491,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             if (storage == null)
             {
                 TextureCreateInfo createInfo = TextureCache.GetCreateInfo(Info, _context.Capabilities, scale);
-                storage = _context.Renderer.CreateTexture(createInfo, scale);
+                storage = _context.Renderer.CreateTexture(createInfo);
             }
 
             if (copy)
@@ -523,7 +524,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             if (ScaleFactor != scale)
             {
-                Logger.Debug?.Print(LogClass.Gpu, $"Rescaling {Info.Width}x{Info.Height} {Info.FormatInfo.Format.ToString()} to ({ScaleFactor} to {scale}). ");
+                Logger.Debug?.Print(LogClass.Gpu, $"Rescaling {Info.Width}x{Info.Height} {Info.FormatInfo.Format} to ({ScaleFactor} to {scale}). ");
 
                 ScaleFactor = scale;
 
@@ -537,7 +538,7 @@ namespace Ryujinx.Graphics.Gpu.Image
 
                 foreach (var view in _views)
                 {
-                    Logger.Debug?.Print(LogClass.Gpu, $"  Recreating view {Info.Width}x{Info.Height} {Info.FormatInfo.Format.ToString()}.");
+                    Logger.Debug?.Print(LogClass.Gpu, $"  Recreating view {Info.Width}x{Info.Height} {Info.FormatInfo.Format}.");
                     view.ScaleFactor = scale;
 
                     TextureCreateInfo viewCreateInfo = TextureCache.GetCreateInfo(view.Info, _context.Capabilities, scale);
@@ -568,6 +569,18 @@ namespace Ryujinx.Graphics.Gpu.Image
         public bool CheckModified(bool consume)
         {
             return Group.CheckDirty(this, consume);
+        }
+
+        /// <summary>
+        /// Discards all data for this texture.
+        /// This clears all dirty flags and pending copies from other textures.
+        /// It should be used if the texture data will be fully overwritten by the next use.
+        /// </summary>
+        public void DiscardData()
+        {
+            Group.DiscardData(this);
+
+            _dirty = false;
         }
 
         /// <summary>
@@ -648,7 +661,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 }
             }
 
-            SpanOrArray<byte> result = ConvertToHostCompatibleFormat(data);
+            MemoryOwner<byte> result = ConvertToHostCompatibleFormat(data);
 
             if (ScaleFactor != 1f && AllowScaledSetData())
             {
@@ -671,7 +684,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// Uploads new texture data to the host GPU.
         /// </summary>
         /// <param name="data">New data</param>
-        public void SetData(SpanOrArray<byte> data)
+        public void SetData(MemoryOwner<byte> data)
         {
             BlacklistScale();
 
@@ -690,7 +703,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="data">New data</param>
         /// <param name="layer">Target layer</param>
         /// <param name="level">Target level</param>
-        public void SetData(SpanOrArray<byte> data, int layer, int level)
+        public void SetData(MemoryOwner<byte> data, int layer, int level)
         {
             BlacklistScale();
 
@@ -708,7 +721,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="layer">Target layer</param>
         /// <param name="level">Target level</param>
         /// <param name="region">Target sub-region of the texture to update</param>
-        public void SetData(ReadOnlySpan<byte> data, int layer, int level, Rectangle<int> region)
+        public void SetData(MemoryOwner<byte> data, int layer, int level, Rectangle<int> region)
         {
             BlacklistScale();
 
@@ -726,7 +739,7 @@ namespace Ryujinx.Graphics.Gpu.Image
         /// <param name="level">Mip level to convert</param>
         /// <param name="single">True to convert a single slice</param>
         /// <returns>Converted data</returns>
-        public SpanOrArray<byte> ConvertToHostCompatibleFormat(ReadOnlySpan<byte> data, int level = 0, bool single = false)
+        public MemoryOwner<byte> ConvertToHostCompatibleFormat(ReadOnlySpan<byte> data, int level = 0, bool single = false)
         {
             int width = Info.Width;
             int height = Info.Height;
@@ -741,11 +754,11 @@ namespace Ryujinx.Graphics.Gpu.Image
 
             int sliceDepth = single ? 1 : depth;
 
-            SpanOrArray<byte> result;
+            MemoryOwner<byte> linear;
 
             if (Info.IsLinear)
             {
-                result = LayoutConverter.ConvertLinearStridedToLinear(
+                linear = LayoutConverter.ConvertLinearStridedToLinear(
                     width,
                     height,
                     Info.FormatInfo.BlockWidth,
@@ -757,7 +770,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             }
             else
             {
-                result = LayoutConverter.ConvertBlockLinearToLinear(
+                linear = LayoutConverter.ConvertBlockLinearToLinear(
                     width,
                     height,
                     depth,
@@ -774,33 +787,41 @@ namespace Ryujinx.Graphics.Gpu.Image
                     data);
             }
 
+            MemoryOwner<byte> result = linear;
+
             // Handle compressed cases not supported by the host:
             // - ASTC is usually not supported on desktop cards.
             // - BC4/BC5 is not supported on 3D textures.
             if (!_context.Capabilities.SupportsAstcCompression && Format.IsAstc())
             {
-                if (!AstcDecoder.TryDecodeToRgba8P(
-                    result.ToArray(),
-                    Info.FormatInfo.BlockWidth,
-                    Info.FormatInfo.BlockHeight,
-                    width,
-                    height,
-                    sliceDepth,
-                    levels,
-                    layers,
-                    out byte[] decoded))
+                using (result)
                 {
-                    string texInfo = $"{Info.Target} {Info.FormatInfo.Format} {Info.Width}x{Info.Height}x{Info.DepthOrLayers} levels {Info.Levels}";
+                    if (!AstcDecoder.TryDecodeToRgba8P(
+                        result.Memory,
+                        Info.FormatInfo.BlockWidth,
+                        Info.FormatInfo.BlockHeight,
+                        width,
+                        height,
+                        sliceDepth,
+                        levels,
+                        layers,
+                        out MemoryOwner<byte> decoded))
+                    {
+                        string texInfo = $"{Info.Target} {Info.FormatInfo.Format} {Info.Width}x{Info.Height}x{Info.DepthOrLayers} levels {Info.Levels}";
 
-                    Logger.Debug?.Print(LogClass.Gpu, $"Invalid ASTC texture at 0x{Info.GpuAddress:X} ({texInfo}).");
+                        Logger.Debug?.Print(LogClass.Gpu, $"Invalid ASTC texture at 0x{Info.GpuAddress:X} ({texInfo}).");
+                    }
+
+                    if (GraphicsConfig.EnableTextureRecompression)
+                    {
+                        using (decoded)
+                        {
+                            return BCnEncoder.EncodeBC7(decoded.Memory, width, height, sliceDepth, levels, layers);
+                        }
+                    }
+
+                    return decoded;
                 }
-
-                if (GraphicsConfig.EnableTextureRecompression)
-                {
-                    decoded = BCnEncoder.EncodeBC7(decoded, width, height, sliceDepth, levels, layers);
-                }
-
-                result = decoded;
             }
             else if (!_context.Capabilities.SupportsEtc2Compression && Format.IsEtc2())
             {
@@ -808,16 +829,22 @@ namespace Ryujinx.Graphics.Gpu.Image
                 {
                     case Format.Etc2RgbaSrgb:
                     case Format.Etc2RgbaUnorm:
-                        result = ETC2Decoder.DecodeRgba(result, width, height, sliceDepth, levels, layers);
-                        break;
+                        using (result)
+                        {
+                            return ETC2Decoder.DecodeRgba(result.Span, width, height, sliceDepth, levels, layers);
+                        }
                     case Format.Etc2RgbPtaSrgb:
                     case Format.Etc2RgbPtaUnorm:
-                        result = ETC2Decoder.DecodePta(result, width, height, sliceDepth, levels, layers);
-                        break;
+                        using (result)
+                        {
+                            return ETC2Decoder.DecodePta(result.Span, width, height, sliceDepth, levels, layers);
+                        }
                     case Format.Etc2RgbSrgb:
                     case Format.Etc2RgbUnorm:
-                        result = ETC2Decoder.DecodeRgb(result, width, height, sliceDepth, levels, layers);
-                        break;
+                        using (result)
+                        {
+                            return ETC2Decoder.DecodeRgb(result.Span, width, height, sliceDepth, levels, layers);
+                        }
                 }
             }
             else if (!TextureCompatibility.HostSupportsBcFormat(Format, Target, _context.Capabilities))
@@ -826,48 +853,75 @@ namespace Ryujinx.Graphics.Gpu.Image
                 {
                     case Format.Bc1RgbaSrgb:
                     case Format.Bc1RgbaUnorm:
-                        result = BCnDecoder.DecodeBC1(result, width, height, sliceDepth, levels, layers);
-                        break;
+                        using (result)
+                        {
+                            return BCnDecoder.DecodeBC1(result.Span, width, height, sliceDepth, levels, layers);
+                        }
                     case Format.Bc2Srgb:
                     case Format.Bc2Unorm:
-                        result = BCnDecoder.DecodeBC2(result, width, height, sliceDepth, levels, layers);
-                        break;
+                        using (result)
+                        {
+                            return BCnDecoder.DecodeBC2(result.Span, width, height, sliceDepth, levels, layers);
+                        }
                     case Format.Bc3Srgb:
                     case Format.Bc3Unorm:
-                        result = BCnDecoder.DecodeBC3(result, width, height, sliceDepth, levels, layers);
-                        break;
+                        using (result)
+                        {
+                            return BCnDecoder.DecodeBC3(result.Span, width, height, sliceDepth, levels, layers);
+                        }
                     case Format.Bc4Snorm:
                     case Format.Bc4Unorm:
-                        result = BCnDecoder.DecodeBC4(result, width, height, sliceDepth, levels, layers, Format == Format.Bc4Snorm);
-                        break;
+                        using (result)
+                        {
+                            return BCnDecoder.DecodeBC4(result.Span, width, height, sliceDepth, levels, layers, Format == Format.Bc4Snorm);
+                        }
                     case Format.Bc5Snorm:
                     case Format.Bc5Unorm:
-                        result = BCnDecoder.DecodeBC5(result, width, height, sliceDepth, levels, layers, Format == Format.Bc5Snorm);
-                        break;
+                        using (result)
+                        {
+                            return BCnDecoder.DecodeBC5(result.Span, width, height, sliceDepth, levels, layers, Format == Format.Bc5Snorm);
+                        }
                     case Format.Bc6HSfloat:
                     case Format.Bc6HUfloat:
-                        result = BCnDecoder.DecodeBC6(result, width, height, sliceDepth, levels, layers, Format == Format.Bc6HSfloat);
-                        break;
+                        using (result)
+                        {
+                            return BCnDecoder.DecodeBC6(result.Span, width, height, sliceDepth, levels, layers, Format == Format.Bc6HSfloat);
+                        }
                     case Format.Bc7Srgb:
                     case Format.Bc7Unorm:
-                        result = BCnDecoder.DecodeBC7(result, width, height, sliceDepth, levels, layers);
-                        break;
+                        using (result)
+                        {
+                            return BCnDecoder.DecodeBC7(result.Span, width, height, sliceDepth, levels, layers);
+                        }
                 }
             }
             else if (!_context.Capabilities.SupportsR4G4Format && Format == Format.R4G4Unorm)
             {
-                result = PixelConverter.ConvertR4G4ToR4G4B4A4(result, width);
-
-                if (!_context.Capabilities.SupportsR4G4B4A4Format)
+                using (result)
                 {
-                    result = PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(result, width);
+                    var converted = PixelConverter.ConvertR4G4ToR4G4B4A4(result.Span, width);
+
+                    if (_context.Capabilities.SupportsR4G4B4A4Format)
+                    {
+                        return converted;
+                    }
+                    else
+                    {
+                        using (converted)
+                        {
+                            return PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(converted.Span, width);
+                        }
+                    }
                 }
             }
             else if (Format == Format.R4G4B4A4Unorm)
             {
                 if (!_context.Capabilities.SupportsR4G4B4A4Format)
                 {
-                    result = PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(result, width);
+                    using (result)
+                    {
+                        return PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(result.Span, width);
+                    }
                 }
             }
             else if (!_context.Capabilities.Supports5BitComponentFormat && Format.Is16BitPacked())
@@ -876,19 +930,27 @@ namespace Ryujinx.Graphics.Gpu.Image
                 {
                     case Format.B5G6R5Unorm:
                     case Format.R5G6B5Unorm:
-                        result = PixelConverter.ConvertR5G6B5ToR8G8B8A8(result, width);
-                        break;
+                        using (result)
+                        {
+                            return PixelConverter.ConvertR5G6B5ToR8G8B8A8(result.Span, width);
+                        }
                     case Format.B5G5R5A1Unorm:
                     case Format.R5G5B5X1Unorm:
                     case Format.R5G5B5A1Unorm:
-                        result = PixelConverter.ConvertR5G5B5ToR8G8B8A8(result, width, Format == Format.R5G5B5X1Unorm);
-                        break;
+                        using (result)
+                        {
+                            return PixelConverter.ConvertR5G5B5ToR8G8B8A8(result.Span, width, Format == Format.R5G5B5X1Unorm);
+                        }
                     case Format.A1B5G5R5Unorm:
-                        result = PixelConverter.ConvertA1B5G5R5ToR8G8B8A8(result, width);
-                        break;
+                        using (result)
+                        {
+                            return PixelConverter.ConvertA1B5G5R5ToR8G8B8A8(result.Span, width);
+                        }
                     case Format.R4G4B4A4Unorm:
-                        result = PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(result, width);
-                        break;
+                        using (result)
+                        {
+                            return PixelConverter.ConvertR4G4B4A4ToR8G8B8A8(result.Span, width);
+                        }
                 }
             }
 
@@ -1254,7 +1316,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 FormatInfo formatInfo = TextureCompatibility.ToHostCompatibleFormat(Info, _context.Capabilities);
 
-                TextureCreateInfo createInfo = new TextureCreateInfo(
+                TextureCreateInfo createInfo = new(
                     Info.Width,
                     Info.Height,
                     target == Target.CubemapArray ? 6 : 1,
@@ -1274,7 +1336,7 @@ namespace Ryujinx.Graphics.Gpu.Image
                 ITexture viewTexture = HostTexture.CreateView(createInfo, 0, 0);
 
                 _arrayViewTexture = viewTexture;
-                _arrayViewTarget  = target;
+                _arrayViewTarget = target;
 
                 return viewTexture;
             }
@@ -1317,29 +1379,21 @@ namespace Ryujinx.Graphics.Gpu.Image
             {
                 case Target.Texture1D:
                 case Target.Texture1DArray:
-                    return target == Target.Texture1D ||
-                           target == Target.Texture1DArray;
-
+                    return target == Target.Texture1D || target == Target.Texture1DArray;
                 case Target.Texture2D:
                 case Target.Texture2DArray:
-                    return target == Target.Texture2D ||
-                           target == Target.Texture2DArray;
-
+                    return target == Target.Texture2D || target == Target.Texture2DArray;
                 case Target.Cubemap:
                 case Target.CubemapArray:
-                    return target == Target.Cubemap ||
-                           target == Target.CubemapArray;
-
+                    return target == Target.Cubemap || target == Target.CubemapArray;
                 case Target.Texture2DMultisample:
                 case Target.Texture2DMultisampleArray:
-                    return target == Target.Texture2DMultisample ||
-                           target == Target.Texture2DMultisampleArray;
-
+                    return target == Target.Texture2DMultisample || target == Target.Texture2DMultisampleArray;
                 case Target.Texture3D:
                     return target == Target.Texture3D;
+                default:
+                    return false;
             }
-
-            return false;
         }
 
         /// <summary>
@@ -1398,7 +1452,7 @@ namespace Ryujinx.Graphics.Gpu.Image
             Height = info.Height;
             CanForceAnisotropy = CanTextureForceAnisotropy();
 
-            _depth  = info.GetDepth();
+            _depth = info.GetDepth();
             _layers = info.GetLayers();
         }
 
@@ -1696,7 +1750,6 @@ namespace Ryujinx.Graphics.Gpu.Image
             if (Group.Storage == this)
             {
                 Group.Unmapped();
-
                 Group.ClearModified(unmapRange);
             }
         }

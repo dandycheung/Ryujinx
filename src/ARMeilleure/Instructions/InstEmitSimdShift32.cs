@@ -1,11 +1,10 @@
-﻿using ARMeilleure.Decoders;
+using ARMeilleure.Decoders;
 using ARMeilleure.IntermediateRepresentation;
 using ARMeilleure.State;
 using ARMeilleure.Translation;
 using System;
 using System.Diagnostics;
 using System.Reflection;
-
 using static ARMeilleure.Instructions.InstEmitHelper;
 using static ARMeilleure.Instructions.InstEmitSimdHelper;
 using static ARMeilleure.Instructions.InstEmitSimdHelper32;
@@ -107,6 +106,38 @@ namespace ARMeilleure.Instructions
             context.Copy(GetVecA32(op.Qd), res);
         }
 
+        public static void Vshll2(ArmEmitterContext context)
+        {
+            OpCode32Simd op = (OpCode32Simd)context.CurrOp;
+
+            Operand res = context.VectorZero();
+
+            int elems = op.GetBytesCount() >> op.Size;
+
+            for (int index = 0; index < elems; index++)
+            {
+                Operand me = EmitVectorExtract32(context, op.Qm, op.Im + index, op.Size, !op.U);
+
+                if (op.Size == 2)
+                {
+                    if (op.U)
+                    {
+                        me = context.ZeroExtend32(OperandType.I64, me);
+                    }
+                    else
+                    {
+                        me = context.SignExtend32(OperandType.I64, me);
+                    }
+                }
+
+                me = context.ShiftLeft(me, Const(8 << op.Size));
+
+                res = EmitVectorInsert(context, res, me, index, op.Size + 1);
+            }
+
+            context.Copy(GetVecA32(op.Qd), res);
+        }
+
         public static void Vshr(ArmEmitterContext context)
         {
             OpCode32SimdShImm op = (OpCode32SimdShImm)context.CurrOp;
@@ -129,6 +160,36 @@ namespace ARMeilleure.Instructions
             int shift = GetImmShr(op);
 
             EmitVectorUnaryNarrowOp32(context, (op1) => context.ShiftRightUI(op1, Const(shift)));
+        }
+
+        public static void Vsli_I(ArmEmitterContext context)
+        {
+            OpCode32SimdShImm op = (OpCode32SimdShImm)context.CurrOp;
+            int shift = op.Shift;
+            int eSize = 8 << op.Size;
+
+            ulong mask = shift != 0 ? ulong.MaxValue >> (64 - shift) : 0UL;
+
+            Operand res = GetVec(op.Qd);
+
+            int elems = op.GetBytesCount() >> op.Size;
+
+            for (int index = 0; index < elems; index++)
+            {
+                Operand me = EmitVectorExtractZx(context, op.Qm, op.Im + index, op.Size);
+
+                Operand neShifted = context.ShiftLeft(me, Const(shift));
+
+                Operand de = EmitVectorExtractZx(context, op.Qd, op.Id + index, op.Size);
+
+                Operand deMasked = context.BitwiseAnd(de, Const(mask));
+
+                Operand e = context.BitwiseOr(neShifted, deMasked);
+
+                res = EmitVectorInsert(context, res, e, op.Id + index, op.Size);
+            }
+
+            context.Copy(GetVec(op.Qd), res);
         }
 
         public static void Vsra(ArmEmitterContext context)
@@ -291,7 +352,7 @@ namespace ARMeilleure.Instructions
 
             VectorSxSx = SignedSrc | SignedDst,
             VectorSxZx = SignedSrc,
-            VectorZxZx = 0
+            VectorZxZx = 0,
         }
 
         private static void EmitRoundShrImmSaturatingNarrowOp(ArmEmitterContext context, ShrImmSaturatingNarrowFlags flags)
@@ -303,10 +364,10 @@ namespace ARMeilleure.Instructions
         {
             OpCode32SimdShImm op = (OpCode32SimdShImm)context.CurrOp;
 
-            bool scalar    = (flags & ShrImmSaturatingNarrowFlags.Scalar)    != 0;
+            bool scalar = (flags & ShrImmSaturatingNarrowFlags.Scalar) != 0;
             bool signedSrc = (flags & ShrImmSaturatingNarrowFlags.SignedSrc) != 0;
             bool signedDst = (flags & ShrImmSaturatingNarrowFlags.SignedDst) != 0;
-            bool round     = (flags & ShrImmSaturatingNarrowFlags.Round)     != 0;
+            bool round = (flags & ShrImmSaturatingNarrowFlags.Round) != 0;
 
             if (scalar)
             {

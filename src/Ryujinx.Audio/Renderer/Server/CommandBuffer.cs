@@ -20,7 +20,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <summary>
         /// The command processing time estimator in use.
         /// </summary>
-        private ICommandProcessingTimeEstimator _commandProcessingTimeEstimator;
+        private readonly ICommandProcessingTimeEstimator _commandProcessingTimeEstimator;
 
         /// <summary>
         /// The estimated total processing time.
@@ -61,7 +61,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateClearMixBuffer(int nodeId)
         {
-            ClearMixBufferCommand command = new ClearMixBufferCommand(nodeId);
+            ClearMixBufferCommand command = new(nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -79,7 +79,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="wasPlaying">Set to true if the voice was playing previously.</param>
         public void GenerateDepopPrepare(Memory<VoiceUpdateState> state, Memory<float> depopBuffer, uint bufferCount, uint bufferOffset, int nodeId, bool wasPlaying)
         {
-            DepopPrepareCommand command = new DepopPrepareCommand(state, depopBuffer, bufferCount, bufferOffset, nodeId, wasPlaying);
+            DepopPrepareCommand command = new(state, depopBuffer, bufferCount, bufferOffset, nodeId, wasPlaying);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -94,7 +94,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GeneratePerformance(ref PerformanceEntryAddresses performanceEntryAddresses, PerformanceCommand.Type type, int nodeId)
         {
-            PerformanceCommand command = new PerformanceCommand(ref performanceEntryAddresses, type, nodeId);
+            PerformanceCommand command = new(ref performanceEntryAddresses, type, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -110,7 +110,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateVolumeRamp(float previousVolume, float volume, uint bufferIndex, int nodeId)
         {
-            VolumeRampCommand command = new VolumeRampCommand(previousVolume, volume, bufferIndex, nodeId);
+            VolumeRampCommand command = new(previousVolume, volume, bufferIndex, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -127,7 +127,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateDataSourceVersion2(ref VoiceState voiceState, Memory<VoiceUpdateState> state, ushort outputBufferIndex, ushort channelIndex, int nodeId)
         {
-            DataSourceVersion2Command command = new DataSourceVersion2Command(ref voiceState, state, outputBufferIndex, channelIndex, nodeId);
+            DataSourceVersion2Command command = new(ref voiceState, state, outputBufferIndex, channelIndex, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -144,7 +144,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GeneratePcmInt16DataSourceVersion1(ref VoiceState voiceState, Memory<VoiceUpdateState> state, ushort outputBufferIndex, ushort channelIndex, int nodeId)
         {
-            PcmInt16DataSourceCommandVersion1 command = new PcmInt16DataSourceCommandVersion1(ref voiceState, state, outputBufferIndex, channelIndex, nodeId);
+            PcmInt16DataSourceCommandVersion1 command = new(ref voiceState, state, outputBufferIndex, channelIndex, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -161,7 +161,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GeneratePcmFloatDataSourceVersion1(ref VoiceState voiceState, Memory<VoiceUpdateState> state, ushort outputBufferIndex, ushort channelIndex, int nodeId)
         {
-            PcmFloatDataSourceCommandVersion1 command = new PcmFloatDataSourceCommandVersion1(ref voiceState, state, outputBufferIndex, channelIndex, nodeId);
+            PcmFloatDataSourceCommandVersion1 command = new(ref voiceState, state, outputBufferIndex, channelIndex, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -177,7 +177,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateAdpcmDataSourceVersion1(ref VoiceState voiceState, Memory<VoiceUpdateState> state, ushort outputBufferIndex, int nodeId)
         {
-            AdpcmDataSourceCommandVersion1 command = new AdpcmDataSourceCommandVersion1(ref voiceState, state, outputBufferIndex, nodeId);
+            AdpcmDataSourceCommandVersion1 command = new(ref voiceState, state, outputBufferIndex, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -196,7 +196,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateBiquadFilter(int baseIndex, ref BiquadFilterParameter filter, Memory<BiquadFilterState> biquadFilterStateMemory, int inputBufferOffset, int outputBufferOffset, bool needInitialization, int nodeId)
         {
-            BiquadFilterCommand command = new BiquadFilterCommand(baseIndex, ref filter, biquadFilterStateMemory, inputBufferOffset, outputBufferOffset, needInitialization, nodeId);
+            BiquadFilterCommand command = new(baseIndex, ref filter, biquadFilterStateMemory, inputBufferOffset, outputBufferOffset, needInitialization, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -204,7 +204,7 @@ namespace Ryujinx.Audio.Renderer.Server
         }
 
         /// <summary>
-        /// Create a new <see cref="GroupedBiquadFilterCommand"/>.
+        /// Create a new <see cref="MultiTapBiquadFilterCommand"/>.
         /// </summary>
         /// <param name="baseIndex">The base index of the input and output buffer.</param>
         /// <param name="filters">The biquad filter parameters.</param>
@@ -213,9 +213,9 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="outputBufferOffset">The output buffer offset.</param>
         /// <param name="isInitialized">Set to true if the biquad filter state is initialized.</param>
         /// <param name="nodeId">The node id associated to this command.</param>
-        public void GenerateGroupedBiquadFilter(int baseIndex, ReadOnlySpan<BiquadFilterParameter> filters, Memory<BiquadFilterState> biquadFilterStatesMemory, int inputBufferOffset, int outputBufferOffset, ReadOnlySpan<bool> isInitialized, int nodeId)
+        public void GenerateMultiTapBiquadFilter(int baseIndex, ReadOnlySpan<BiquadFilterParameter> filters, Memory<BiquadFilterState> biquadFilterStatesMemory, int inputBufferOffset, int outputBufferOffset, ReadOnlySpan<bool> isInitialized, int nodeId)
         {
-            GroupedBiquadFilterCommand command = new GroupedBiquadFilterCommand(baseIndex, filters, biquadFilterStatesMemory, inputBufferOffset, outputBufferOffset, isInitialized, nodeId);
+            MultiTapBiquadFilterCommand command = new(baseIndex, filters, biquadFilterStatesMemory, inputBufferOffset, outputBufferOffset, isInitialized, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -232,9 +232,9 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="volume">The new volume.</param>
         /// <param name="state">The <see cref="VoiceUpdateState"/> to generate the command from.</param>
         /// <param name="nodeId">The node id associated to this command.</param>
-        public void GenerateMixRampGrouped(uint mixBufferCount, uint inputBufferIndex, uint outputBufferIndex, Span<float> previousVolume, Span<float> volume, Memory<VoiceUpdateState> state, int nodeId)
+        public void GenerateMixRampGrouped(uint mixBufferCount, uint inputBufferIndex, uint outputBufferIndex, ReadOnlySpan<float> previousVolume, ReadOnlySpan<float> volume, Memory<VoiceUpdateState> state, int nodeId)
         {
-            MixRampGroupedCommand command = new MixRampGroupedCommand(mixBufferCount, inputBufferIndex, outputBufferIndex, previousVolume, volume, state, nodeId);
+            MixRampGroupedCommand command = new(mixBufferCount, inputBufferIndex, outputBufferIndex, previousVolume, volume, state, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -253,7 +253,121 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateMixRamp(float previousVolume, float volume, uint inputBufferIndex, uint outputBufferIndex, int lastSampleIndex, Memory<VoiceUpdateState> state, int nodeId)
         {
-            MixRampCommand command = new MixRampCommand(previousVolume, volume, inputBufferIndex, outputBufferIndex, lastSampleIndex, state, nodeId);
+            MixRampCommand command = new(previousVolume, volume, inputBufferIndex, outputBufferIndex, lastSampleIndex, state, nodeId);
+
+            command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
+
+            AddCommand(command);
+        }
+
+        /// <summary>
+        /// Generate a new <see cref="BiquadFilterAndMixCommand"/>.
+        /// </summary>
+        /// <param name="previousVolume">The previous volume.</param>
+        /// <param name="volume">The new volume.</param>
+        /// <param name="inputBufferIndex">The input buffer index.</param>
+        /// <param name="outputBufferIndex">The output buffer index.</param>
+        /// <param name="lastSampleIndex">The index in the <see cref="VoiceUpdateState.LastSamples"/> array to store the ramped sample.</param>
+        /// <param name="state">The <see cref="VoiceUpdateState"/> to generate the command from.</param>
+        /// <param name="filter">The biquad filter parameter.</param>
+        /// <param name="biquadFilterState">The biquad state.</param>
+        /// <param name="previousBiquadFilterState">The previous biquad state.</param>
+        /// <param name="needInitialization">Set to true if the biquad filter state needs to be initialized.</param>
+        /// <param name="hasVolumeRamp">Set to true if the mix has volume ramp, and <paramref name="previousVolume"/> should be taken into account.</param>
+        /// <param name="isFirstMixBuffer">Set to true if the buffer is the first mix buffer.</param>
+        /// <param name="nodeId">The node id associated to this command.</param>
+        public void GenerateBiquadFilterAndMix(
+            float previousVolume,
+            float volume,
+            uint inputBufferIndex,
+            uint outputBufferIndex,
+            int lastSampleIndex,
+            Memory<VoiceUpdateState> state,
+            ref BiquadFilterParameter filter,
+            Memory<BiquadFilterState> biquadFilterState,
+            Memory<BiquadFilterState> previousBiquadFilterState,
+            bool needInitialization,
+            bool hasVolumeRamp,
+            bool isFirstMixBuffer,
+            int nodeId)
+        {
+            BiquadFilterAndMixCommand command = new(
+                previousVolume,
+                volume,
+                inputBufferIndex,
+                outputBufferIndex,
+                lastSampleIndex,
+                state,
+                ref filter,
+                biquadFilterState,
+                previousBiquadFilterState,
+                needInitialization,
+                hasVolumeRamp,
+                isFirstMixBuffer,
+                nodeId);
+
+            command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
+
+            AddCommand(command);
+        }
+
+        /// <summary>
+        /// Generate a new <see cref="MultiTapBiquadFilterAndMixCommand"/>.
+        /// </summary>
+        /// <param name="previousVolume">The previous volume.</param>
+        /// <param name="volume">The new volume.</param>
+        /// <param name="inputBufferIndex">The input buffer index.</param>
+        /// <param name="outputBufferIndex">The output buffer index.</param>
+        /// <param name="lastSampleIndex">The index in the <see cref="VoiceUpdateState.LastSamples"/> array to store the ramped sample.</param>
+        /// <param name="state">The <see cref="VoiceUpdateState"/> to generate the command from.</param>
+        /// <param name="filter0">First biquad filter parameter.</param>
+        /// <param name="filter1">Second biquad filter parameter.</param>
+        /// <param name="biquadFilterState0">First biquad state.</param>
+        /// <param name="biquadFilterState1">Second biquad state.</param>
+        /// <param name="previousBiquadFilterState0">First previous biquad state.</param>
+        /// <param name="previousBiquadFilterState1">Second previous biquad state.</param>
+        /// <param name="needInitialization0">Set to true if the first biquad filter state needs to be initialized.</param>
+        /// <param name="needInitialization1">Set to true if the second biquad filter state needs to be initialized.</param>
+        /// <param name="hasVolumeRamp">Set to true if the mix has volume ramp, and <paramref name="previousVolume"/> should be taken into account.</param>
+        /// <param name="isFirstMixBuffer">Set to true if the buffer is the first mix buffer.</param>
+        /// <param name="nodeId">The node id associated to this command.</param>
+        public void GenerateMultiTapBiquadFilterAndMix(
+            float previousVolume,
+            float volume,
+            uint inputBufferIndex,
+            uint outputBufferIndex,
+            int lastSampleIndex,
+            Memory<VoiceUpdateState> state,
+            ref BiquadFilterParameter filter0,
+            ref BiquadFilterParameter filter1,
+            Memory<BiquadFilterState> biquadFilterState0,
+            Memory<BiquadFilterState> biquadFilterState1,
+            Memory<BiquadFilterState> previousBiquadFilterState0,
+            Memory<BiquadFilterState> previousBiquadFilterState1,
+            bool needInitialization0,
+            bool needInitialization1,
+            bool hasVolumeRamp,
+            bool isFirstMixBuffer,
+            int nodeId)
+        {
+            MultiTapBiquadFilterAndMixCommand command = new(
+                previousVolume,
+                volume,
+                inputBufferIndex,
+                outputBufferIndex,
+                lastSampleIndex,
+                state,
+                ref filter0,
+                ref filter1,
+                biquadFilterState0,
+                biquadFilterState1,
+                previousBiquadFilterState0,
+                previousBiquadFilterState1,
+                needInitialization0,
+                needInitialization1,
+                hasVolumeRamp,
+                isFirstMixBuffer,
+                nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -268,9 +382,9 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="bufferCount">The buffer count.</param>
         /// <param name="nodeId">The node id associated to this command.</param>
         /// <param name="sampleRate">The target sample rate in use.</param>
-        public void GenerateDepopForMixBuffersCommand(Memory<float> depopBuffer, uint bufferOffset, uint bufferCount, int nodeId, uint sampleRate)
+        public void GenerateDepopForMixBuffers(Memory<float> depopBuffer, uint bufferOffset, uint bufferCount, int nodeId, uint sampleRate)
         {
-            DepopForMixBuffersCommand command = new DepopForMixBuffersCommand(depopBuffer, bufferOffset, bufferCount, nodeId, sampleRate);
+            DepopForMixBuffersCommand command = new(depopBuffer, bufferOffset, bufferCount, nodeId, sampleRate);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -285,7 +399,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateCopyMixBuffer(uint inputBufferIndex, uint outputBufferIndex, int nodeId)
         {
-            CopyMixBufferCommand command = new CopyMixBufferCommand(inputBufferIndex, outputBufferIndex, nodeId);
+            CopyMixBufferCommand command = new(inputBufferIndex, outputBufferIndex, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -301,7 +415,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="volume">The mix volume.</param>
         public void GenerateMix(uint inputBufferIndex, uint outputBufferIndex, int nodeId, float volume)
         {
-            MixCommand command = new MixCommand(inputBufferIndex, outputBufferIndex, nodeId, volume);
+            MixCommand command = new(inputBufferIndex, outputBufferIndex, nodeId, volume);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -323,7 +437,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             if (parameter.IsChannelCountValid())
             {
-                ReverbCommand command = new ReverbCommand(bufferOffset, parameter, state, isEnabled, workBuffer, nodeId, isLongSizePreDelaySupported, newEffectChannelMappingSupported);
+                ReverbCommand command = new(bufferOffset, parameter, state, isEnabled, workBuffer, nodeId, isLongSizePreDelaySupported, newEffectChannelMappingSupported);
 
                 command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -345,7 +459,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             if (parameter.IsChannelCountValid())
             {
-                Reverb3dCommand command = new Reverb3dCommand(bufferOffset, parameter, state, isEnabled, workBuffer, nodeId, newEffectChannelMappingSupported);
+                Reverb3dCommand command = new(bufferOffset, parameter, state, isEnabled, workBuffer, nodeId, newEffectChannelMappingSupported);
 
                 command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -368,7 +482,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             if (parameter.IsChannelCountValid())
             {
-                DelayCommand command = new DelayCommand(bufferOffset, parameter, state, isEnabled, workBuffer, nodeId, newEffectChannelMappingSupported);
+                DelayCommand command = new(bufferOffset, parameter, state, isEnabled, workBuffer, nodeId, newEffectChannelMappingSupported);
 
                 command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -389,7 +503,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             if (parameter.IsChannelCountValid())
             {
-                LimiterCommandVersion1 command = new LimiterCommandVersion1(bufferOffset, parameter, state, isEnabled, workBuffer, nodeId);
+                LimiterCommandVersion1 command = new(bufferOffset, parameter, state, isEnabled, workBuffer, nodeId);
 
                 command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -411,7 +525,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             if (parameter.IsChannelCountValid())
             {
-                LimiterCommandVersion2 command = new LimiterCommandVersion2(bufferOffset, parameter, state, effectResultState, isEnabled, workBuffer, nodeId);
+                LimiterCommandVersion2 command = new(bufferOffset, parameter, state, effectResultState, isEnabled, workBuffer, nodeId);
 
                 command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -437,7 +551,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             if (state.SendBufferInfoBase != 0 && state.ReturnBufferInfoBase != 0)
             {
-                AuxiliaryBufferCommand command = new AuxiliaryBufferCommand(bufferOffset, inputBufferOffset, outputBufferOffset, ref state, isEnabled, countMax, outputBuffer, inputBuffer, updateCount, writeOffset, nodeId);
+                AuxiliaryBufferCommand command = new(bufferOffset, inputBufferOffset, outputBufferOffset, ref state, isEnabled, countMax, outputBuffer, inputBuffer, updateCount, writeOffset, nodeId);
 
                 command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -461,7 +575,7 @@ namespace Ryujinx.Audio.Renderer.Server
         {
             if (sendBufferInfo != 0)
             {
-                CaptureBufferCommand command = new CaptureBufferCommand(bufferOffset, inputBufferOffset, sendBufferInfo, isEnabled, countMax, outputBuffer, updateCount, writeOffset, nodeId);
+                CaptureBufferCommand command = new(bufferOffset, inputBufferOffset, sendBufferInfo, isEnabled, countMax, outputBuffer, updateCount, writeOffset, nodeId);
 
                 command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -469,11 +583,20 @@ namespace Ryujinx.Audio.Renderer.Server
             }
         }
 
-        public void GenerateCompressorEffect(uint bufferOffset, CompressorParameter parameter, Memory<CompressorState> state, bool isEnabled, int nodeId)
+        /// <summary>
+        /// Generate a new <see cref="CompressorCommand"/>.
+        /// </summary>
+        /// <param name="bufferOffset">The target buffer offset.</param>
+        /// <param name="parameter">The compressor parameter.</param>
+        /// <param name="state">The compressor state.</param>
+        /// <param name="effectResultState">The DSP effect result state.</param>
+        /// <param name="isEnabled">Set to true if the effect should be active.</param>
+        /// <param name="nodeId">The node id associated to this command.</param>
+        public void GenerateCompressorEffect(uint bufferOffset, CompressorParameter parameter, Memory<CompressorState> state, Memory<EffectResultState> effectResultState, bool isEnabled, int nodeId)
         {
             if (parameter.IsChannelCountValid())
             {
-                CompressorCommand command = new CompressorCommand(bufferOffset, parameter, state, isEnabled, nodeId);
+                CompressorCommand command = new(bufferOffset, parameter, state, effectResultState, isEnabled, nodeId);
 
                 command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -489,7 +612,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateVolume(float volume, uint bufferOffset, int nodeId)
         {
-            VolumeCommand command = new VolumeCommand(volume, bufferOffset, nodeId);
+            VolumeCommand command = new(volume, bufferOffset, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -504,7 +627,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateCircularBuffer(uint bufferOffset, CircularBufferSink sink, int nodeId)
         {
-            CircularBufferSinkCommand command = new CircularBufferSinkCommand(bufferOffset, ref sink.Parameter, ref sink.CircularBufferAddressInfo, sink.CurrentWriteOffset, nodeId);
+            CircularBufferSinkCommand command = new(bufferOffset, ref sink.Parameter, ref sink.CircularBufferAddressInfo, sink.CurrentWriteOffset, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -521,7 +644,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateDownMixSurroundToStereo(uint bufferOffset, Span<byte> inputBufferOffset, Span<byte> outputBufferOffset, float[] downMixParameter, int nodeId)
         {
-            DownMixSurroundToStereoCommand command = new DownMixSurroundToStereoCommand(bufferOffset, inputBufferOffset, outputBufferOffset, downMixParameter, nodeId);
+            DownMixSurroundToStereoCommand command = new(bufferOffset, inputBufferOffset, outputBufferOffset, downMixParameter, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -541,7 +664,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateUpsample(uint bufferOffset, UpsamplerState upsampler, uint inputCount, Span<byte> inputBufferOffset, uint bufferCountPerSample, uint sampleCount, uint sampleRate, int nodeId)
         {
-            UpsampleCommand command = new UpsampleCommand(bufferOffset, upsampler, inputCount, inputBufferOffset, bufferCountPerSample, sampleCount, sampleRate, nodeId);
+            UpsampleCommand command = new(bufferOffset, upsampler, inputCount, inputBufferOffset, bufferCountPerSample, sampleCount, sampleRate, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 
@@ -558,7 +681,7 @@ namespace Ryujinx.Audio.Renderer.Server
         /// <param name="nodeId">The node id associated to this command.</param>
         public void GenerateDeviceSink(uint bufferOffset, DeviceSink sink, int sessionId, Memory<float> buffer, int nodeId)
         {
-            DeviceSinkCommand command = new DeviceSinkCommand(bufferOffset, sink, sessionId, buffer, nodeId);
+            DeviceSinkCommand command = new(bufferOffset, sink, sessionId, buffer, nodeId);
 
             command.EstimatedProcessingTime = _commandProcessingTimeEstimator.Estimate(command);
 

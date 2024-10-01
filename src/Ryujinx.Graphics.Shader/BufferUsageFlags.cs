@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace Ryujinx.Graphics.Shader
 {
@@ -13,6 +13,6 @@ namespace Ryujinx.Graphics.Shader
         /// <summary>
         /// Buffer is written to.
         /// </summary>
-        Write = 1 << 0
+        Write = 1 << 0,
     }
 }

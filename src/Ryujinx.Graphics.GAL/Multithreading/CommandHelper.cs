@@ -1,10 +1,12 @@
-﻿using Ryujinx.Graphics.GAL.Multithreading.Commands;
+using Ryujinx.Graphics.GAL.Multithreading.Commands;
 using Ryujinx.Graphics.GAL.Multithreading.Commands.Buffer;
 using Ryujinx.Graphics.GAL.Multithreading.Commands.CounterEvent;
+using Ryujinx.Graphics.GAL.Multithreading.Commands.ImageArray;
 using Ryujinx.Graphics.GAL.Multithreading.Commands.Program;
 using Ryujinx.Graphics.GAL.Multithreading.Commands.Renderer;
 using Ryujinx.Graphics.GAL.Multithreading.Commands.Sampler;
 using Ryujinx.Graphics.GAL.Multithreading.Commands.Texture;
+using Ryujinx.Graphics.GAL.Multithreading.Commands.TextureArray;
 using Ryujinx.Graphics.GAL.Multithreading.Commands.Window;
 using System;
 using System.Linq;
@@ -17,8 +19,8 @@ namespace Ryujinx.Graphics.GAL.Multithreading
     {
         private delegate void CommandDelegate(Span<byte> memory, ThreadedRenderer threaded, IRenderer renderer);
 
-        private static int _totalCommands = (int)Enum.GetValues<CommandType>().Max() + 1;
-        private static CommandDelegate[] _lookup = new CommandDelegate[_totalCommands];
+        private static readonly int _totalCommands = (int)Enum.GetValues<CommandType>().Max() + 1;
+        private static readonly CommandDelegate[] _lookup = new CommandDelegate[_totalCommands];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ref T GetCommand<T>(Span<byte> memory)
@@ -42,13 +44,15 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
 
             Register<ActionCommand>(CommandType.Action);
-            Register<CreateBufferCommand>(CommandType.CreateBuffer);
             Register<CreateBufferAccessCommand>(CommandType.CreateBufferAccess);
+            Register<CreateBufferSparseCommand>(CommandType.CreateBufferSparse);
             Register<CreateHostBufferCommand>(CommandType.CreateHostBuffer);
+            Register<CreateImageArrayCommand>(CommandType.CreateImageArray);
             Register<CreateProgramCommand>(CommandType.CreateProgram);
             Register<CreateSamplerCommand>(CommandType.CreateSampler);
             Register<CreateSyncCommand>(CommandType.CreateSync);
             Register<CreateTextureCommand>(CommandType.CreateTexture);
+            Register<CreateTextureArrayCommand>(CommandType.CreateTextureArray);
             Register<GetCapabilitiesCommand>(CommandType.GetCapabilities);
             Register<PreFrameCommand>(CommandType.PreFrame);
             Register<ReportCounterCommand>(CommandType.ReportCounter);
@@ -61,6 +65,9 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
             Register<CounterEventDisposeCommand>(CommandType.CounterEventDispose);
             Register<CounterEventFlushCommand>(CommandType.CounterEventFlush);
+
+            Register<ImageArrayDisposeCommand>(CommandType.ImageArrayDispose);
+            Register<ImageArraySetImagesCommand>(CommandType.ImageArraySetImages);
 
             Register<ProgramDisposeCommand>(CommandType.ProgramDispose);
             Register<ProgramGetBinaryCommand>(CommandType.ProgramGetBinary);
@@ -80,6 +87,10 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             Register<TextureSetDataSliceCommand>(CommandType.TextureSetDataSlice);
             Register<TextureSetDataSliceRegionCommand>(CommandType.TextureSetDataSliceRegion);
             Register<TextureSetStorageCommand>(CommandType.TextureSetStorage);
+
+            Register<TextureArrayDisposeCommand>(CommandType.TextureArrayDispose);
+            Register<TextureArraySetSamplersCommand>(CommandType.TextureArraySetSamplers);
+            Register<TextureArraySetTexturesCommand>(CommandType.TextureArraySetTextures);
 
             Register<WindowPresentCommand>(CommandType.WindowPresent);
 
@@ -113,6 +124,8 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             Register<SetTransformFeedbackBuffersCommand>(CommandType.SetTransformFeedbackBuffers);
             Register<SetUniformBuffersCommand>(CommandType.SetUniformBuffers);
             Register<SetImageCommand>(CommandType.SetImage);
+            Register<SetImageArrayCommand>(CommandType.SetImageArray);
+            Register<SetImageArraySeparateCommand>(CommandType.SetImageArraySeparate);
             Register<SetIndexBufferCommand>(CommandType.SetIndexBuffer);
             Register<SetLineParametersCommand>(CommandType.SetLineParameters);
             Register<SetLogicOpStateCommand>(CommandType.SetLogicOpState);
@@ -125,11 +138,12 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             Register<SetProgramCommand>(CommandType.SetProgram);
             Register<SetRasterizerDiscardCommand>(CommandType.SetRasterizerDiscard);
             Register<SetRenderTargetColorMasksCommand>(CommandType.SetRenderTargetColorMasks);
-            Register<SetRenderTargetScaleCommand>(CommandType.SetRenderTargetScale);
             Register<SetRenderTargetsCommand>(CommandType.SetRenderTargets);
             Register<SetScissorsCommand>(CommandType.SetScissor);
             Register<SetStencilTestCommand>(CommandType.SetStencilTest);
             Register<SetTextureAndSamplerCommand>(CommandType.SetTextureAndSampler);
+            Register<SetTextureArrayCommand>(CommandType.SetTextureArray);
+            Register<SetTextureArraySeparateCommand>(CommandType.SetTextureArraySeparate);
             Register<SetUserClipDistanceCommand>(CommandType.SetUserClipDistance);
             Register<SetVertexAttribsCommand>(CommandType.SetVertexAttribs);
             Register<SetVertexBuffersCommand>(CommandType.SetVertexBuffers);
@@ -138,7 +152,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             Register<TextureBarrierTiledCommand>(CommandType.TextureBarrierTiled);
             Register<TryHostConditionalRenderingCommand>(CommandType.TryHostConditionalRendering);
             Register<TryHostConditionalRenderingFlushCommand>(CommandType.TryHostConditionalRenderingFlush);
-            Register<UpdateRenderScaleCommand>(CommandType.UpdateRenderScale);
 
             return maxCommandSize;
         }
@@ -146,7 +159,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void RunCommand(Span<byte> memory, ThreadedRenderer threaded, IRenderer renderer)
         {
-            _lookup[memory[memory.Length - 1]](memory, threaded, renderer);
+            _lookup[memory[^1]](memory, threaded, renderer);
         }
     }
 }

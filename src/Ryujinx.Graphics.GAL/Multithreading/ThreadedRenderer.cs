@@ -1,4 +1,4 @@
-﻿using Ryujinx.Common;
+using Ryujinx.Common;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Graphics.GAL.Multithreading.Commands;
 using Ryujinx.Graphics.GAL.Multithreading.Commands.Buffer;
@@ -26,24 +26,24 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         private const int MaxRefsPerCommand = 2;
         private const int QueueCount = 10000;
 
-        private int _elementSize;
-        private IRenderer _baseRenderer;
+        private readonly int _elementSize;
+        private readonly IRenderer _baseRenderer;
         private Thread _gpuThread;
         private Thread _backendThread;
         private bool _running;
 
-        private AutoResetEvent _frameComplete = new AutoResetEvent(true);
+        private readonly AutoResetEvent _frameComplete = new(true);
 
-        private ManualResetEventSlim _galWorkAvailable;
-        private CircularSpanPool _spanPool;
+        private readonly ManualResetEventSlim _galWorkAvailable;
+        private readonly CircularSpanPool _spanPool;
 
-        private ManualResetEventSlim _invokeRun;
-        private AutoResetEvent _interruptRun;
+        private readonly ManualResetEventSlim _invokeRun;
+        private readonly AutoResetEvent _interruptRun;
 
         private bool _lastSampleCounterClear = true;
 
-        private byte[] _commandQueue;
-        private object[] _refQueue;
+        private readonly byte[] _commandQueue;
+        private readonly object[] _refQueue;
 
         private int _consumerPtr;
         private int _commandCount;
@@ -79,7 +79,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             renderer.ScreenCaptured += (sender, info) => ScreenCaptured?.Invoke(this, info);
             renderer.SetInterruptAction(Interrupt);
 
-            Pipeline = new ThreadedPipeline(this, renderer.Pipeline);
+            Pipeline = new ThreadedPipeline(this);
             Window = new ThreadedWindow(this, renderer);
             Buffers = new BufferMap();
             Sync = new SyncMap();
@@ -105,7 +105,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
             _gpuThread = new Thread(gpuLoop)
             {
-                Name = "GPU.MainThread"
+                Name = "GPU.MainThread",
             };
 
             _gpuThread.Start();
@@ -137,7 +137,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
                 {
                     int commandPtr = _consumerPtr;
 
-                    Span<byte> command = new Span<byte>(_commandQueue, commandPtr * _elementSize, _elementSize);
+                    Span<byte> command = new(_commandQueue, commandPtr * _elementSize, _elementSize);
 
                     // Run the command.
 
@@ -180,10 +180,10 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
             _producerPtr = (_producerPtr + 1) % QueueCount;
 
-            Span<byte> memory = new Span<byte>(_commandQueue, taken * _elementSize, _elementSize);
+            Span<byte> memory = new(_commandQueue, taken * _elementSize, _elementSize);
             ref T result = ref Unsafe.As<byte, T>(ref MemoryMarshal.GetReference(memory));
 
-            memory[memory.Length - 1] = (byte)((IGALCommand)result).CommandType;
+            memory[^1] = (byte)((IGALCommand)result).CommandType;
 
             return ref result;
         }
@@ -263,10 +263,10 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             }
         }
 
-        public BufferHandle CreateBuffer(int size, BufferHandle storageHint)
+        public BufferHandle CreateBuffer(int size, BufferAccess access)
         {
             BufferHandle handle = Buffers.CreateBufferHandle();
-            New<CreateBufferCommand>().Set(handle, size, storageHint);
+            New<CreateBufferAccessCommand>().Set(handle, size, access);
             QueueCommand();
 
             return handle;
@@ -281,20 +281,29 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             return handle;
         }
 
-        public BufferHandle CreateBuffer(int size, BufferAccess access)
+        public BufferHandle CreateBufferSparse(ReadOnlySpan<BufferRange> storageBuffers)
         {
             BufferHandle handle = Buffers.CreateBufferHandle();
-            New<CreateBufferAccessCommand>().Set(handle, size, access);
+            New<CreateBufferSparseCommand>().Set(handle, CopySpan(storageBuffers));
             QueueCommand();
 
             return handle;
+        }
+
+        public IImageArray CreateImageArray(int size, bool isBuffer)
+        {
+            var imageArray = new ThreadedImageArray(this);
+            New<CreateImageArrayCommand>().Set(Ref(imageArray), size, isBuffer);
+            QueueCommand();
+
+            return imageArray;
         }
 
         public IProgram CreateProgram(ShaderSource[] shaders, ShaderInfo info)
         {
             var program = new ThreadedProgram(this);
 
-            SourceProgramRequest request = new SourceProgramRequest(program, shaders, info);
+            SourceProgramRequest request = new(program, shaders, info);
 
             Programs.Add(request);
 
@@ -320,23 +329,33 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             QueueCommand();
         }
 
-        public ITexture CreateTexture(TextureCreateInfo info, float scale)
+        public ITexture CreateTexture(TextureCreateInfo info)
         {
             if (IsGpuThread())
             {
-                var texture = new ThreadedTexture(this, info, scale);
-                New<CreateTextureCommand>().Set(Ref(texture), info, scale);
+                var texture = new ThreadedTexture(this, info);
+                New<CreateTextureCommand>().Set(Ref(texture), info);
                 QueueCommand();
 
                 return texture;
             }
             else
             {
-                var texture = new ThreadedTexture(this, info, scale);
-                texture.Base = _baseRenderer.CreateTexture(info, scale);
+                var texture = new ThreadedTexture(this, info)
+                {
+                    Base = _baseRenderer.CreateTexture(info),
+                };
 
                 return texture;
             }
+        }
+        public ITextureArray CreateTextureArray(int size, bool isBuffer)
+        {
+            var textureArray = new ThreadedTextureArray(this);
+            New<CreateTextureArrayCommand>().Set(Ref(textureArray), size, isBuffer);
+            QueueCommand();
+
+            return textureArray;
         }
 
         public void DeleteBuffer(BufferHandle buffer)
@@ -349,7 +368,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         {
             if (IsGpuThread())
             {
-                ResultBox<PinnedSpan<byte>> box = new ResultBox<PinnedSpan<byte>>();
+                ResultBox<PinnedSpan<byte>> box = new();
                 New<BufferGetDataCommand>().Set(buffer, offset, size, Ref(box));
                 InvokeCommand();
 
@@ -363,7 +382,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public Capabilities GetCapabilities()
         {
-            ResultBox<Capabilities> box = new ResultBox<Capabilities>();
+            ResultBox<Capabilities> box = new();
             New<GetCapabilitiesCommand>().Set(Ref(box));
             InvokeCommand();
 
@@ -393,7 +412,7 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         {
             var program = new ThreadedProgram(this);
 
-            BinaryProgramRequest request = new BinaryProgramRequest(program, programBinary, hasFragmentShader, info);
+            BinaryProgramRequest request = new(program, programBinary, hasFragmentShader, info);
             Programs.Add(request);
 
             New<CreateProgramCommand>().Set(Ref((IProgramRequest)request));
@@ -408,10 +427,10 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             QueueCommand();
         }
 
-        public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, bool hostReserved)
+        public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
-            ThreadedCounterEvent evt = new ThreadedCounterEvent(this, type, _lastSampleCounterClear);
-            New<ReportCounterCommand>().Set(Ref(evt), type, Ref(resultHandler), hostReserved);
+            ThreadedCounterEvent evt = new(this, type, _lastSampleCounterClear);
+            New<ReportCounterCommand>().Set(Ref(evt), type, Ref(resultHandler), divisor, hostReserved);
             QueueCommand();
 
             if (type == CounterType.SamplesPassed)
@@ -466,7 +485,9 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             {
                 lock (_interruptLock)
                 {
-                    while (Interlocked.CompareExchange(ref _interruptAction, action, null) != null) { }
+                    while (Interlocked.CompareExchange(ref _interruptAction, action, null) != null)
+                    {
+                    }
 
                     _galWorkAvailable.Set();
 
@@ -497,6 +518,8 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 
         public void Dispose()
         {
+            GC.SuppressFinalize(this);
+
             // Dispose must happen from the render thread, after all commands have completed.
 
             // Stop the GPU thread.

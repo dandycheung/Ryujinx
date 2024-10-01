@@ -1,18 +1,17 @@
 using Ryujinx.Common;
 using System;
-using System.Numerics;
 
 namespace Ryujinx.Graphics.GAL
 {
     public readonly struct TextureCreateInfo : IEquatable<TextureCreateInfo>
     {
-        public int Width         { get; }
-        public int Height        { get; }
-        public int Depth         { get; }
-        public int Levels        { get; }
-        public int Samples       { get; }
-        public int BlockWidth    { get; }
-        public int BlockHeight   { get; }
+        public int Width { get; }
+        public int Height { get; }
+        public int Depth { get; }
+        public int Levels { get; }
+        public int Samples { get; }
+        public int BlockWidth { get; }
+        public int BlockHeight { get; }
         public int BytesPerPixel { get; }
 
         public bool IsCompressed => (BlockWidth | BlockHeight) != 1;
@@ -29,37 +28,37 @@ namespace Ryujinx.Graphics.GAL
         public SwizzleComponent SwizzleA { get; }
 
         public TextureCreateInfo(
-            int              width,
-            int              height,
-            int              depth,
-            int              levels,
-            int              samples,
-            int              blockWidth,
-            int              blockHeight,
-            int              bytesPerPixel,
-            Format           format,
+            int width,
+            int height,
+            int depth,
+            int levels,
+            int samples,
+            int blockWidth,
+            int blockHeight,
+            int bytesPerPixel,
+            Format format,
             DepthStencilMode depthStencilMode,
-            Target           target,
+            Target target,
             SwizzleComponent swizzleR,
             SwizzleComponent swizzleG,
             SwizzleComponent swizzleB,
             SwizzleComponent swizzleA)
         {
-            Width            = width;
-            Height           = height;
-            Depth            = depth;
-            Levels           = levels;
-            Samples          = samples;
-            BlockWidth       = blockWidth;
-            BlockHeight      = blockHeight;
-            BytesPerPixel    = bytesPerPixel;
-            Format           = format;
+            Width = width;
+            Height = height;
+            Depth = depth;
+            Levels = levels;
+            Samples = samples;
+            BlockWidth = blockWidth;
+            BlockHeight = blockHeight;
+            BytesPerPixel = bytesPerPixel;
+            Format = format;
             DepthStencilMode = depthStencilMode;
-            Target           = target;
-            SwizzleR         = swizzleR;
-            SwizzleG         = swizzleG;
-            SwizzleB         = swizzleB;
-            SwizzleA         = swizzleA;
+            Target = target;
+            SwizzleR = swizzleR;
+            SwizzleG = swizzleG;
+            SwizzleB = swizzleB;
+            SwizzleA = swizzleA;
         }
 
         public int GetMipSize(int level)
@@ -113,25 +112,6 @@ namespace Ryujinx.Graphics.GAL
             return 1;
         }
 
-        public int GetLevelsClamped()
-        {
-            int maxSize = Width;
-
-            if (Target != Target.Texture1D &&
-                Target != Target.Texture1DArray)
-            {
-                maxSize = Math.Max(maxSize, Height);
-            }
-
-            if (Target == Target.Texture3D)
-            {
-                maxSize = Math.Max(maxSize, Depth);
-            }
-
-            int maxLevels = BitOperations.Log2((uint)maxSize) + 1;
-            return Math.Min(Levels, maxLevels);
-        }
-
         private static int GetLevelSize(int size, int level)
         {
             return Math.Max(1, size >> level);
@@ -142,7 +122,7 @@ namespace Ryujinx.Graphics.GAL
             return HashCode.Combine(Width, Height);
         }
 
-        bool IEquatable<TextureCreateInfo>.Equals(TextureCreateInfo other)
+        public bool Equals(TextureCreateInfo other)
         {
             return Width == other.Width &&
                    Height == other.Height &&
@@ -159,6 +139,21 @@ namespace Ryujinx.Graphics.GAL
                    SwizzleG == other.SwizzleG &&
                    SwizzleB == other.SwizzleB &&
                    SwizzleA == other.SwizzleA;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is TextureCreateInfo info && this.Equals(info);
+        }
+
+        public static bool operator ==(TextureCreateInfo left, TextureCreateInfo right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(TextureCreateInfo left, TextureCreateInfo right)
+        {
+            return !(left == right);
         }
     }
 }

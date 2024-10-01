@@ -1,4 +1,3 @@
-﻿using ARMeilleure.Translation;
 using CommandLine;
 using LibHac.Tools.FsSystem;
 using Ryujinx.Audio.Backends.SDL2;
@@ -8,6 +7,7 @@ using Ryujinx.Common.Configuration.Hid;
 using Ryujinx.Common.Configuration.Hid.Controller;
 using Ryujinx.Common.Configuration.Hid.Controller.Motion;
 using Ryujinx.Common.Configuration.Hid.Keyboard;
+using Ryujinx.Common.GraphicsDriver;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Logging.Targets;
 using Ryujinx.Common.SystemInterop;
@@ -19,6 +19,7 @@ using Ryujinx.Graphics.Gpu;
 using Ryujinx.Graphics.Gpu.Shader;
 using Ryujinx.Graphics.OpenGL;
 using Ryujinx.Graphics.Vulkan;
+using Ryujinx.Graphics.Vulkan.MoltenVK;
 using Ryujinx.Headless.SDL2.OpenGL;
 using Ryujinx.Headless.SDL2.Vulkan;
 using Ryujinx.HLE;
@@ -28,6 +29,7 @@ using Ryujinx.HLE.HOS.Services.Account.Acc;
 using Ryujinx.Input;
 using Ryujinx.Input.HLE;
 using Ryujinx.Input.SDL2;
+using Ryujinx.SDL2.Common;
 using Silk.NET.Vulkan;
 using System;
 using System.Collections.Generic;
@@ -57,20 +59,23 @@ namespace Ryujinx.Headless.SDL2
         private static bool _enableKeyboard;
         private static bool _enableMouse;
 
-        private static readonly InputConfigJsonSerializerContext SerializerContext = new(JsonHelper.GetDefaultSerializerOptions());
+        private static readonly InputConfigJsonSerializerContext _serializerContext = new(JsonHelper.GetDefaultSerializerOptions());
 
         static void Main(string[] args)
         {
-            Version = ReleaseInformation.GetVersion();
+            Version = ReleaseInformation.Version;
+
+            // Make process DPI aware for proper window sizing on high-res screens.
+            ForceDpiAware.Windows();
 
             Console.Title = $"Ryujinx Console {Version} (Headless SDL2)";
 
             if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
             {
-                AutoResetEvent invoked = new AutoResetEvent(false);
+                AutoResetEvent invoked = new(false);
 
                 // MacOS must perform SDL polls from the main thread.
-                Ryujinx.SDL2.Common.SDL2Driver.MainThreadDispatcher = (Action action) =>
+                SDL2Driver.MainThreadDispatcher = action =>
                 {
                     invoked.Reset();
 
@@ -83,6 +88,11 @@ namespace Ryujinx.Headless.SDL2
 
                     invoked.WaitOne();
                 };
+            }
+
+            if (OperatingSystem.IsMacOS())
+            {
+                MVKInitialization.InitializeResolver();
             }
 
             Parser.Default.ParseArguments<Options>(args)
@@ -140,53 +150,53 @@ namespace Ryujinx.Headless.SDL2
                 {
                     config = new StandardKeyboardInputConfig
                     {
-                        Version          = InputConfig.CurrentVersion,
-                        Backend          = InputBackendType.WindowKeyboard,
-                        Id               = null,
-                        ControllerType   = ControllerType.JoyconPair,
-                        LeftJoycon       = new LeftJoyconCommonConfig<Key>
+                        Version = InputConfig.CurrentVersion,
+                        Backend = InputBackendType.WindowKeyboard,
+                        Id = null,
+                        ControllerType = ControllerType.JoyconPair,
+                        LeftJoycon = new LeftJoyconCommonConfig<Key>
                         {
-                            DpadUp       = Key.Up,
-                            DpadDown     = Key.Down,
-                            DpadLeft     = Key.Left,
-                            DpadRight    = Key.Right,
-                            ButtonMinus  = Key.Minus,
-                            ButtonL      = Key.E,
-                            ButtonZl     = Key.Q,
-                            ButtonSl     = Key.Unbound,
-                            ButtonSr     = Key.Unbound
+                            DpadUp = Key.Up,
+                            DpadDown = Key.Down,
+                            DpadLeft = Key.Left,
+                            DpadRight = Key.Right,
+                            ButtonMinus = Key.Minus,
+                            ButtonL = Key.E,
+                            ButtonZl = Key.Q,
+                            ButtonSl = Key.Unbound,
+                            ButtonSr = Key.Unbound,
                         },
 
-                        LeftJoyconStick  = new JoyconConfigKeyboardStick<Key>
+                        LeftJoyconStick = new JoyconConfigKeyboardStick<Key>
                         {
-                            StickUp      = Key.W,
-                            StickDown    = Key.S,
-                            StickLeft    = Key.A,
-                            StickRight   = Key.D,
-                            StickButton  = Key.F,
+                            StickUp = Key.W,
+                            StickDown = Key.S,
+                            StickLeft = Key.A,
+                            StickRight = Key.D,
+                            StickButton = Key.F,
                         },
 
-                        RightJoycon      = new RightJoyconCommonConfig<Key>
+                        RightJoycon = new RightJoyconCommonConfig<Key>
                         {
-                            ButtonA      = Key.Z,
-                            ButtonB      = Key.X,
-                            ButtonX      = Key.C,
-                            ButtonY      = Key.V,
-                            ButtonPlus   = Key.Plus,
-                            ButtonR      = Key.U,
-                            ButtonZr     = Key.O,
-                            ButtonSl     = Key.Unbound,
-                            ButtonSr     = Key.Unbound
+                            ButtonA = Key.Z,
+                            ButtonB = Key.X,
+                            ButtonX = Key.C,
+                            ButtonY = Key.V,
+                            ButtonPlus = Key.Plus,
+                            ButtonR = Key.U,
+                            ButtonZr = Key.O,
+                            ButtonSl = Key.Unbound,
+                            ButtonSr = Key.Unbound,
                         },
 
                         RightJoyconStick = new JoyconConfigKeyboardStick<Key>
                         {
-                            StickUp      = Key.I,
-                            StickDown    = Key.K,
-                            StickLeft    = Key.J,
-                            StickRight   = Key.L,
-                            StickButton  = Key.H,
-                        }
+                            StickUp = Key.I,
+                            StickDown = Key.K,
+                            StickLeft = Key.J,
+                            StickRight = Key.L,
+                            StickButton = Key.H,
+                        },
                     };
                 }
                 else
@@ -195,72 +205,72 @@ namespace Ryujinx.Headless.SDL2
 
                     config = new StandardControllerInputConfig
                     {
-                        Version          = InputConfig.CurrentVersion,
-                        Backend          = InputBackendType.GamepadSDL2,
-                        Id               = null,
-                        ControllerType   = ControllerType.JoyconPair,
-                        DeadzoneLeft     = 0.1f,
-                        DeadzoneRight    = 0.1f,
-                        RangeLeft        = 1.0f,
-                        RangeRight       = 1.0f,
+                        Version = InputConfig.CurrentVersion,
+                        Backend = InputBackendType.GamepadSDL2,
+                        Id = null,
+                        ControllerType = ControllerType.JoyconPair,
+                        DeadzoneLeft = 0.1f,
+                        DeadzoneRight = 0.1f,
+                        RangeLeft = 1.0f,
+                        RangeRight = 1.0f,
                         TriggerThreshold = 0.5f,
                         LeftJoycon = new LeftJoyconCommonConfig<ConfigGamepadInputId>
                         {
-                            DpadUp       = ConfigGamepadInputId.DpadUp,
-                            DpadDown     = ConfigGamepadInputId.DpadDown,
-                            DpadLeft     = ConfigGamepadInputId.DpadLeft,
-                            DpadRight    = ConfigGamepadInputId.DpadRight,
-                            ButtonMinus  = ConfigGamepadInputId.Minus,
-                            ButtonL      = ConfigGamepadInputId.LeftShoulder,
-                            ButtonZl     = ConfigGamepadInputId.LeftTrigger,
-                            ButtonSl     = ConfigGamepadInputId.Unbound,
-                            ButtonSr     = ConfigGamepadInputId.Unbound,
+                            DpadUp = ConfigGamepadInputId.DpadUp,
+                            DpadDown = ConfigGamepadInputId.DpadDown,
+                            DpadLeft = ConfigGamepadInputId.DpadLeft,
+                            DpadRight = ConfigGamepadInputId.DpadRight,
+                            ButtonMinus = ConfigGamepadInputId.Minus,
+                            ButtonL = ConfigGamepadInputId.LeftShoulder,
+                            ButtonZl = ConfigGamepadInputId.LeftTrigger,
+                            ButtonSl = ConfigGamepadInputId.Unbound,
+                            ButtonSr = ConfigGamepadInputId.Unbound,
                         },
 
                         LeftJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
                         {
-                            Joystick     = ConfigStickInputId.Left,
-                            StickButton  = ConfigGamepadInputId.LeftStick,
+                            Joystick = ConfigStickInputId.Left,
+                            StickButton = ConfigGamepadInputId.LeftStick,
                             InvertStickX = false,
                             InvertStickY = false,
-                            Rotate90CW   = false,
+                            Rotate90CW = false,
                         },
 
                         RightJoycon = new RightJoyconCommonConfig<ConfigGamepadInputId>
                         {
-                            ButtonA      = isNintendoStyle ? ConfigGamepadInputId.A : ConfigGamepadInputId.B,
-                            ButtonB      = isNintendoStyle ? ConfigGamepadInputId.B : ConfigGamepadInputId.A,
-                            ButtonX      = isNintendoStyle ? ConfigGamepadInputId.X : ConfigGamepadInputId.Y,
-                            ButtonY      = isNintendoStyle ? ConfigGamepadInputId.Y : ConfigGamepadInputId.X,
-                            ButtonPlus   = ConfigGamepadInputId.Plus,
-                            ButtonR      = ConfigGamepadInputId.RightShoulder,
-                            ButtonZr     = ConfigGamepadInputId.RightTrigger,
-                            ButtonSl     = ConfigGamepadInputId.Unbound,
-                            ButtonSr     = ConfigGamepadInputId.Unbound,
+                            ButtonA = isNintendoStyle ? ConfigGamepadInputId.A : ConfigGamepadInputId.B,
+                            ButtonB = isNintendoStyle ? ConfigGamepadInputId.B : ConfigGamepadInputId.A,
+                            ButtonX = isNintendoStyle ? ConfigGamepadInputId.X : ConfigGamepadInputId.Y,
+                            ButtonY = isNintendoStyle ? ConfigGamepadInputId.Y : ConfigGamepadInputId.X,
+                            ButtonPlus = ConfigGamepadInputId.Plus,
+                            ButtonR = ConfigGamepadInputId.RightShoulder,
+                            ButtonZr = ConfigGamepadInputId.RightTrigger,
+                            ButtonSl = ConfigGamepadInputId.Unbound,
+                            ButtonSr = ConfigGamepadInputId.Unbound,
                         },
 
                         RightJoyconStick = new JoyconConfigControllerStick<ConfigGamepadInputId, ConfigStickInputId>
                         {
-                            Joystick     = ConfigStickInputId.Right,
-                            StickButton  = ConfigGamepadInputId.RightStick,
+                            Joystick = ConfigStickInputId.Right,
+                            StickButton = ConfigGamepadInputId.RightStick,
                             InvertStickX = false,
                             InvertStickY = false,
-                            Rotate90CW   = false,
+                            Rotate90CW = false,
                         },
 
                         Motion = new StandardMotionConfigController
                         {
                             MotionBackend = MotionInputBackendType.GamepadDriver,
                             EnableMotion = true,
-                            Sensitivity  = 100,
+                            Sensitivity = 100,
                             GyroDeadzone = 1,
                         },
                         Rumble = new RumbleConfigController
                         {
                             StrongRumble = 1f,
                             WeakRumble = 1f,
-                            EnableRumble = false
-                        }
+                            EnableRumble = false,
+                        },
                     };
                 }
             }
@@ -288,7 +298,7 @@ namespace Ryujinx.Headless.SDL2
 
                 try
                 {
-                    config = JsonHelper.DeserializeFromFile(path, SerializerContext.InputConfig);
+                    config = JsonHelper.DeserializeFromFile(path, _serializerContext.InputConfig);
                 }
                 catch (JsonException)
                 {
@@ -310,7 +320,7 @@ namespace Ryujinx.Headless.SDL2
             {
                 if (controllerConfig.RangeLeft <= 0.0f && controllerConfig.RangeRight <= 0.0f)
                 {
-                    controllerConfig.RangeLeft  = 1.0f;
+                    controllerConfig.RangeLeft = 1.0f;
                     controllerConfig.RangeRight = 1.0f;
 
                     Logger.Info?.Print(LogClass.Application, $"{config.PlayerIndex} stick range reset. Save the profile now to update your configuration");
@@ -387,7 +397,7 @@ namespace Ryujinx.Headless.SDL2
             _enableKeyboard = option.EnableKeyboard;
             _enableMouse = option.EnableMouse;
 
-            void LoadPlayerConfiguration(string inputProfileName, string inputId, PlayerIndex index)
+            static void LoadPlayerConfiguration(string inputProfileName, string inputId, PlayerIndex index)
             {
                 InputConfig inputConfig = HandlePlayerConfiguration(inputProfileName, inputId, index);
 
@@ -424,11 +434,26 @@ namespace Ryujinx.Headless.SDL2
 
             if (!option.DisableFileLog)
             {
-                Logger.AddTarget(new AsyncLogTargetWrapper(
-                    new FileLogTarget(ReleaseInformation.GetBaseApplicationDirectory(), "file"),
-                    1000,
-                    AsyncLogTargetOverflowAction.Block
-                ));
+                string logDir = AppDataManager.LogsDirPath;
+                FileStream logFile = null;
+
+                if (!string.IsNullOrEmpty(logDir))
+                {
+                    logFile = FileLogTarget.PrepareLogFile(logDir);
+                }
+
+                if (logFile != null)
+                {
+                    Logger.AddTarget(new AsyncLogTargetWrapper(
+                        new FileLogTarget("file", logFile),
+                        1000,
+                        AsyncLogTargetOverflowAction.Block
+                    ));
+                }
+                else
+                {
+                    Logger.Error?.Print(LogClass.Application, "No writable log directory available. Make sure either the Logs directory, Application Data, or the Ryujinx directory is writable.");
+                }
             }
 
             // Setup graphics configuration
@@ -438,6 +463,8 @@ namespace Ryujinx.Headless.SDL2
             GraphicsConfig.MaxAnisotropy = option.MaxAnisotropy;
             GraphicsConfig.ShadersDumpPath = option.GraphicsShadersDumpPath;
             GraphicsConfig.EnableMacroHLE = !option.DisableMacroHLE;
+
+            DriverUtilities.InitDriverConfig(option.BackendThreading == BackendThreading.Off);
 
             while (true)
             {
@@ -468,19 +495,12 @@ namespace Ryujinx.Headless.SDL2
 
         private static void ProgressHandler<T>(T state, int current, int total) where T : Enum
         {
-            string label;
-
-            switch (state)
+            string label = state switch
             {
-                case LoadState ptcState:
-                    label = $"PTC : {current}/{total}";
-                    break;
-                case ShaderCacheState shaderCacheState:
-                    label = $"Shaders : {current}/{total}";
-                    break;
-                default:
-                    throw new ArgumentException($"Unknown Progress Handler type {typeof(T)}");
-            }
+                LoadState => $"PTC : {current}/{total}",
+                ShaderCacheState => $"Shaders : {current}/{total}",
+                _ => throw new ArgumentException($"Unknown Progress Handler type {typeof(T)}"),
+            };
 
             Logger.Info?.Print(LogClass.Application, label);
         }
@@ -499,9 +519,9 @@ namespace Ryujinx.Headless.SDL2
                 string preferredGpuId = string.Empty;
                 Vk api = Vk.GetApi();
 
-                if (!string.IsNullOrEmpty(options.PreferredGpuVendor))
+                if (!string.IsNullOrEmpty(options.PreferredGPUVendor))
                 {
-                    string preferredGpuVendor = options.PreferredGpuVendor.ToLowerInvariant();
+                    string preferredGpuVendor = options.PreferredGPUVendor.ToLowerInvariant();
                     var devices = VulkanRenderer.GetPhysicalDevices(api);
 
                     foreach (var device in devices)
@@ -520,10 +540,8 @@ namespace Ryujinx.Headless.SDL2
                     vulkanWindow.GetRequiredInstanceExtensions,
                     preferredGpuId);
             }
-            else
-            {
-                return new OpenGLRenderer();
-            }
+
+            return new OpenGLRenderer();
         }
 
         private static Switch InitializeEmulationContext(WindowBase window, IRenderer renderer, Options options)
@@ -537,31 +555,32 @@ namespace Ryujinx.Headless.SDL2
                 renderer = new ThreadedRenderer(renderer);
             }
 
-            HLEConfiguration configuration = new HLEConfiguration(_virtualFileSystem,
-                                                                  _libHacHorizonManager,
-                                                                  _contentManager,
-                                                                  _accountManager,
-                                                                  _userChannelPersistence,
-                                                                  renderer,
-                                                                  new SDL2HardwareDeviceDriver(),
-                                                                  options.ExpandRam ? MemoryConfiguration.MemoryConfiguration6GiB : MemoryConfiguration.MemoryConfiguration4GiB,
-                                                                  window,
-                                                                  options.SystemLanguage,
-                                                                  options.SystemRegion,
-                                                                  !options.DisableVsync,
-                                                                  !options.DisableDockedMode,
-                                                                  !options.DisablePtc,
-                                                                  options.EnableInternetAccess,
-                                                                  !options.DisableFsIntegrityChecks ? IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None,
-                                                                  options.FsGlobalAccessLogMode,
-                                                                  options.SystemTimeOffset,
-                                                                  options.SystemTimeZone,
-                                                                  options.MemoryManagerMode,
-                                                                  options.IgnoreMissingServices,
-                                                                  options.AspectRatio,
-                                                                  options.AudioVolume,
-                                                                  options.UseHypervisor ?? true,
-                                                                  options.MultiplayerLanInterfaceId);
+            HLEConfiguration configuration = new(_virtualFileSystem,
+                _libHacHorizonManager,
+                _contentManager,
+                _accountManager,
+                _userChannelPersistence,
+                renderer,
+                new SDL2HardwareDeviceDriver(),
+                options.ExpandRAM ? MemoryConfiguration.MemoryConfiguration8GiB : MemoryConfiguration.MemoryConfiguration4GiB,
+                window,
+                options.SystemLanguage,
+                options.SystemRegion,
+                !options.DisableVSync,
+                !options.DisableDockedMode,
+                !options.DisablePTC,
+                options.EnableInternetAccess,
+                !options.DisableFsIntegrityChecks ? IntegrityCheckLevel.ErrorOnInvalid : IntegrityCheckLevel.None,
+                options.FsGlobalAccessLogMode,
+                options.SystemTimeOffset,
+                options.SystemTimeZone,
+                options.MemoryManagerMode,
+                options.IgnoreMissingServices,
+                options.AspectRatio,
+                options.AudioVolume,
+                options.UseHypervisor ?? true,
+                options.MultiplayerLanInterfaceId,
+                Common.Configuration.Multiplayer.MultiplayerMode.Disabled);
 
             return new Switch(configuration);
         }
@@ -599,6 +618,15 @@ namespace Ryujinx.Headless.SDL2
             IRenderer renderer = CreateRenderer(options, window);
 
             _window = window;
+
+            _window.IsFullscreen = options.IsFullscreen;
+            _window.DisplayId = options.DisplayId;
+            _window.IsExclusiveFullscreen = options.IsExclusiveFullscreen;
+            _window.ExclusiveFullscreenWidth = options.ExclusiveFullscreenWidth;
+            _window.ExclusiveFullscreenHeight = options.ExclusiveFullscreenHeight;
+            _window.AntiAliasing = options.AntiAliasing;
+            _window.ScalingFilter = options.ScalingFilter;
+            _window.ScalingFilterLevel = options.ScalingFilterLevel;
 
             _emulationContext = InitializeEmulationContext(window, renderer, options);
 
@@ -705,9 +733,6 @@ namespace Ryujinx.Headless.SDL2
             }
 
             SetupProgressHandler();
-
-            Translator.IsReadyForTranslation.Reset();
-
             ExecutionEntrypoint();
 
             return true;

@@ -1,15 +1,17 @@
-﻿using MsgPack;
+using MsgPack;
 using MsgPack.Serialization;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.Utilities;
 using Ryujinx.Horizon.Common;
 using Ryujinx.Horizon.Prepo.Types;
 using Ryujinx.Horizon.Sdk.Account;
+using Ryujinx.Horizon.Sdk.Arp;
 using Ryujinx.Horizon.Sdk.Prepo;
 using Ryujinx.Horizon.Sdk.Sf;
 using Ryujinx.Horizon.Sdk.Sf.Hipc;
 using System;
 using System.Text;
+using ApplicationId = Ryujinx.Horizon.Sdk.Ncm.ApplicationId;
 
 namespace Ryujinx.Horizon.Prepo.Ipc
 {
@@ -18,17 +20,19 @@ namespace Ryujinx.Horizon.Prepo.Ipc
         enum PlayReportKind
         {
             Normal,
-            System
+            System,
         }
 
+        private readonly ArpApi _arp;
         private readonly PrepoServicePermissionLevel _permissionLevel;
         private ulong _systemSessionId;
 
-        private bool _immediateTransmissionEnabled = false;
-        private bool _userAgreementCheckEnabled    = true;
+        private bool _immediateTransmissionEnabled;
+        private bool _userAgreementCheckEnabled = true;
 
-        public PrepoService(PrepoServicePermissionLevel permissionLevel)
+        public PrepoService(ArpApi arp, PrepoServicePermissionLevel permissionLevel)
         {
+            _arp = arp;
             _permissionLevel = permissionLevel;
         }
 
@@ -107,7 +111,7 @@ namespace Ryujinx.Horizon.Prepo.Ipc
         }
 
         [CmifCommand(20100)]
-        public Result SaveSystemReport([Buffer(HipcBufferFlags.In | HipcBufferFlags.Pointer)] ReadOnlySpan<byte> gameRoomBuffer, Sdk.Ncm.ApplicationId applicationId, [Buffer(HipcBufferFlags.In | HipcBufferFlags.MapAlias)] ReadOnlySpan<byte> reportBuffer)
+        public Result SaveSystemReport([Buffer(HipcBufferFlags.In | HipcBufferFlags.Pointer)] ReadOnlySpan<byte> gameRoomBuffer, ApplicationId applicationId, [Buffer(HipcBufferFlags.In | HipcBufferFlags.MapAlias)] ReadOnlySpan<byte> reportBuffer)
         {
             if ((_permissionLevel & PrepoServicePermissionLevel.System) != 0)
             {
@@ -118,7 +122,7 @@ namespace Ryujinx.Horizon.Prepo.Ipc
         }
 
         [CmifCommand(20101)]
-        public Result SaveSystemReportWithUser(Uid userId, [Buffer(HipcBufferFlags.In | HipcBufferFlags.Pointer)] ReadOnlySpan<byte> gameRoomBuffer, Sdk.Ncm.ApplicationId applicationId, [Buffer(HipcBufferFlags.In | HipcBufferFlags.MapAlias)] ReadOnlySpan<byte> reportBuffer)
+        public Result SaveSystemReportWithUser(Uid userId, [Buffer(HipcBufferFlags.In | HipcBufferFlags.Pointer)] ReadOnlySpan<byte> gameRoomBuffer, ApplicationId applicationId, [Buffer(HipcBufferFlags.In | HipcBufferFlags.MapAlias)] ReadOnlySpan<byte> reportBuffer)
         {
             if ((_permissionLevel & PrepoServicePermissionLevel.System) != 0)
             {
@@ -164,7 +168,7 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             return PrepoResult.PermissionDenied;
         }
 
-        private static Result ProcessPlayReport(PlayReportKind playReportKind, ReadOnlySpan<byte> gameRoomBuffer, ReadOnlySpan<byte> reportBuffer, ulong pid, Uid userId, bool withUserId = false, Sdk.Ncm.ApplicationId applicationId = default)
+        private Result ProcessPlayReport(PlayReportKind playReportKind, ReadOnlySpan<byte> gameRoomBuffer, ReadOnlySpan<byte> reportBuffer, ulong pid, Uid userId, bool withUserId = false, ApplicationId applicationId = default)
         {
             if (withUserId)
             {
@@ -191,15 +195,15 @@ namespace Ryujinx.Horizon.Prepo.Ipc
                 return PrepoResult.InvalidBufferSize;
             }
 
-            StringBuilder     builder            = new();
+            StringBuilder builder = new();
             MessagePackObject deserializedReport = MessagePackSerializer.UnpackMessagePackObject(reportBuffer.ToArray());
 
             builder.AppendLine();
             builder.AppendLine("PlayReport log:");
             builder.AppendLine($" Kind: {playReportKind}");
 
-            // NOTE: The service calls arp:r using the pid to get the application id, if it fails PrepoResult.InvalidPid is returned.
-            //       Reports are stored internally and an event is signaled to transmit them.
+            // NOTE: Reports are stored internally and an event is signaled to transmit them.
+
             if (pid != 0)
             {
                 builder.AppendLine($" Pid: {pid}");
@@ -208,6 +212,16 @@ namespace Ryujinx.Horizon.Prepo.Ipc
             {
                 builder.AppendLine($" ApplicationId: {applicationId}");
             }
+
+            Result result = _arp.GetApplicationInstanceId(out ulong applicationInstanceId, pid);
+            if (result.IsFailure)
+            {
+                return PrepoResult.InvalidPid;
+            }
+
+            _arp.GetApplicationLaunchProperty(out ApplicationLaunchProperty applicationLaunchProperty, applicationInstanceId).AbortOnFailure();
+
+            builder.AppendLine($" ApplicationVersion: {applicationLaunchProperty.Version}");
 
             if (!userId.IsNull)
             {

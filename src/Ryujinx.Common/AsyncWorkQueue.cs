@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 
@@ -25,7 +25,7 @@ namespace Ryujinx.Common
             _workerThread = new Thread(DoWork)
             {
                 Name = name,
-                IsBackground = true
+                IsBackground = true,
             };
             _workerThread.Start();
         }

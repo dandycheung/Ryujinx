@@ -24,7 +24,7 @@ namespace Ryujinx.Audio.Input
         /// <summary>
         /// The session ids allocation table.
         /// </summary>
-        private int[] _sessionIds;
+        private readonly int[] _sessionIds;
 
         /// <summary>
         /// The device driver.
@@ -39,7 +39,7 @@ namespace Ryujinx.Audio.Input
         /// <summary>
         /// The <see cref="AudioInputSystem"/> session instances.
         /// </summary>
-        private AudioInputSystem[] _sessions;
+        private readonly AudioInputSystem[] _sessions;
 
         /// <summary>
         /// The count of active sessions.
@@ -173,7 +173,7 @@ namespace Ryujinx.Audio.Input
                 // TODO: Detect if the driver supports audio input
             }
 
-            return new string[] { Constants.DefaultDeviceInputName };
+            return new[] { Constants.DefaultDeviceInputName };
         }
 
         /// <summary>
@@ -186,8 +186,6 @@ namespace Ryujinx.Audio.Input
         /// <param name="inputDeviceName">The input device name wanted by the user</param>
         /// <param name="sampleFormat">The sample format to use</param>
         /// <param name="parameter">The user configuration</param>
-        /// <param name="appletResourceUserId">The applet resource user id of the application</param>
-        /// <param name="processHandle">The process handle of the application</param>
         /// <returns>A <see cref="ResultCode"/> reporting an error or a success</returns>
         public ResultCode OpenAudioIn(out string outputDeviceName,
                                       out AudioOutputConfiguration outputConfiguration,
@@ -195,9 +193,7 @@ namespace Ryujinx.Audio.Input
                                       IVirtualMemoryManager memoryManager,
                                       string inputDeviceName,
                                       SampleFormat sampleFormat,
-                                      ref AudioInputConfiguration parameter,
-                                      ulong appletResourceUserId,
-                                      uint processHandle)
+                                      ref AudioInputConfiguration parameter)
         {
             int sessionId = AcquireSessionId();
 
@@ -205,7 +201,7 @@ namespace Ryujinx.Audio.Input
 
             IHardwareDeviceSession deviceSession = _deviceDriver.OpenDeviceSession(IHardwareDeviceDriver.Direction.Input, memoryManager, sampleFormat, parameter.SampleRate, parameter.ChannelCount);
 
-            AudioInputSystem audioIn = new AudioInputSystem(this, _lock, deviceSession, _sessionsBufferEvents[sessionId]);
+            AudioInputSystem audioIn = new(this, _lock, deviceSession, _sessionsBufferEvents[sessionId]);
 
             ResultCode result = audioIn.Initialize(inputDeviceName, sampleFormat, ref parameter, sessionId);
 
@@ -238,6 +234,8 @@ namespace Ryujinx.Audio.Input
 
         public void Dispose()
         {
+            GC.SuppressFinalize(this);
+
             if (Interlocked.CompareExchange(ref _disposeState, 1, 0) == 0)
             {
                 Dispose(true);

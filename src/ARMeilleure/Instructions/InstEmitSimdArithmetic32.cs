@@ -1,8 +1,7 @@
-﻿using ARMeilleure.Decoders;
+using ARMeilleure.Decoders;
 using ARMeilleure.IntermediateRepresentation;
 using ARMeilleure.Translation;
 using System;
-
 using static ARMeilleure.Instructions.InstEmitFlowHelper;
 using static ARMeilleure.Instructions.InstEmitHelper;
 using static ARMeilleure.Instructions.InstEmitSimdHelper;
@@ -190,7 +189,7 @@ namespace ARMeilleure.Instructions
                 2 => context.Multiply(context.ZeroExtend32(OperandType.I64, insert), Const(0x0000000100000001u)),
                 1 => context.Multiply(context.ZeroExtend16(OperandType.I64, insert), Const(0x0001000100010001u)),
                 0 => context.Multiply(context.ZeroExtend8(OperandType.I64, insert), Const(0x0101010101010101u)),
-                _ => throw new InvalidOperationException($"Invalid Vdup size \"{op.Size}\".")
+                _ => throw new InvalidOperationException($"Invalid Vdup size \"{op.Size}\"."),
             };
 
             InsertScalar(context, op.Vd, insert);
@@ -212,7 +211,7 @@ namespace ARMeilleure.Instructions
                 2 => context.Multiply(context.ZeroExtend32(OperandType.I64, insert), Const(0x0000000100000001u)),
                 1 => context.Multiply(context.ZeroExtend16(OperandType.I64, insert), Const(0x0001000100010001u)),
                 0 => context.Multiply(context.ZeroExtend8(OperandType.I64, insert), Const(0x0101010101010101u)),
-                _ => throw new InvalidOperationException($"Invalid Vdup size \"{op.Size}\".")
+                _ => throw new InvalidOperationException($"Invalid Vdup size \"{op.Size}\"."),
             };
 
             InsertScalar(context, op.Vd, insert);
@@ -1116,6 +1115,13 @@ namespace ARMeilleure.Instructions
             }
         }
 
+        public static void Vpadal(ArmEmitterContext context)
+        {
+            OpCode32Simd op = (OpCode32Simd)context.CurrOp;
+
+            EmitVectorPairwiseTernaryLongOpI32(context, (op1, op2, op3) => context.Add(context.Add(op1, op2), op3), op.Opc != 1);
+        }
+
         public static void Vpaddl(ArmEmitterContext context)
         {
             OpCode32Simd op = (OpCode32Simd)context.CurrOp;
@@ -1238,6 +1244,33 @@ namespace ARMeilleure.Instructions
             OpCode32SimdMovn op = (OpCode32SimdMovn)context.CurrOp;
 
             EmitVectorUnaryNarrowOp32(context, (op1) => EmitSatQ(context, op1, 8 << op.Size, signedSrc: true, signedDst: false), signed: true);
+        }
+
+        public static void Vqrdmulh(ArmEmitterContext context)
+        {
+            OpCode32SimdReg op = (OpCode32SimdReg)context.CurrOp;
+            int eSize = 8 << op.Size;
+
+            EmitVectorBinaryOpI32(context, (op1, op2) =>
+            {
+                if (op.Size == 2)
+                {
+                    op1 = context.SignExtend32(OperandType.I64, op1);
+                    op2 = context.SignExtend32(OperandType.I64, op2);
+                }
+
+                Operand res = context.Multiply(op1, op2);
+                res = context.Add(res, Const(res.Type, 1L << (eSize - 2)));
+                res = context.ShiftRightSI(res, Const(eSize - 1));
+                res = EmitSatQ(context, res, eSize, signedSrc: true, signedDst: true);
+
+                if (op.Size == 2)
+                {
+                    res = context.ConvertI64ToI32(res);
+                }
+
+                return res;
+            }, signed: true);
         }
 
         public static void Vqsub(ArmEmitterContext context)
@@ -1654,7 +1687,7 @@ namespace ARMeilleure.Instructions
         {
             IOpCode32Simd op = (IOpCode32Simd)context.CurrOp;
 
-            Func<Operand, Operand, Operand> genericEmit = (n, m) =>
+            Operand genericEmit(Operand n, Operand m)
             {
                 Operand nNum = context.Copy(n);
                 Operand mNum = context.Copy(m);
@@ -1688,7 +1721,7 @@ namespace ARMeilleure.Instructions
 
                     return context.AddIntrinsic(isMaxNum ? Intrinsic.X86Maxpd : Intrinsic.X86Minpd, nNum, mNum);
                 }
-            };
+            }
 
             if (scalar)
             {

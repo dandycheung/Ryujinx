@@ -1,4 +1,4 @@
-﻿using OpenTK.Graphics.OpenGL;
+using OpenTK.Graphics.OpenGL;
 using Ryujinx.Common.Configuration;
 using Ryujinx.Common.Logging;
 using Ryujinx.Graphics.GAL;
@@ -21,13 +21,13 @@ namespace Ryujinx.Graphics.OpenGL
 
         public IWindow Window => _window;
 
-        private TextureCopy _textureCopy;
-        private TextureCopy _backgroundTextureCopy;
+        private readonly TextureCopy _textureCopy;
+        private readonly TextureCopy _backgroundTextureCopy;
         internal TextureCopy TextureCopy => BackgroundContextWorker.InBackground ? _backgroundTextureCopy : _textureCopy;
         internal TextureCopyIncompatible TextureCopyIncompatible { get; }
         internal TextureCopyMS TextureCopyMS { get; }
 
-        private Sync _sync;
+        private readonly Sync _sync;
 
         public event EventHandler<ScreenCaptureImageInfo> ScreenCaptured;
 
@@ -57,16 +57,13 @@ namespace Ryujinx.Graphics.OpenGL
             ResourcePool = new ResourcePool();
         }
 
-        public BufferHandle CreateBuffer(int size, BufferHandle storageHint)
-        {
-            return CreateBuffer(size, GAL.BufferAccess.Default);
-        }
-
         public BufferHandle CreateBuffer(int size, GAL.BufferAccess access)
         {
             BufferCount++;
 
-            if (access == GAL.BufferAccess.FlushPersistent)
+            var memType = access & GAL.BufferAccess.MemoryTypeMask;
+
+            if (memType == GAL.BufferAccess.HostMemory)
             {
                 BufferHandle handle = Buffer.CreatePersistent(size);
 
@@ -85,6 +82,16 @@ namespace Ryujinx.Graphics.OpenGL
             throw new NotSupportedException();
         }
 
+        public BufferHandle CreateBufferSparse(ReadOnlySpan<BufferRange> storageBuffers)
+        {
+            throw new NotSupportedException();
+        }
+
+        public IImageArray CreateImageArray(int size, bool isBuffer)
+        {
+            return new ImageArray(size);
+        }
+
         public IProgram CreateProgram(ShaderSource[] shaders, ShaderInfo info)
         {
             return new Program(shaders, info.FragmentOutputMap);
@@ -95,7 +102,7 @@ namespace Ryujinx.Graphics.OpenGL
             return new Sampler(info);
         }
 
-        public ITexture CreateTexture(TextureCreateInfo info, float scaleFactor)
+        public ITexture CreateTexture(TextureCreateInfo info)
         {
             if (info.Target == Target.TextureBuffer)
             {
@@ -103,8 +110,13 @@ namespace Ryujinx.Graphics.OpenGL
             }
             else
             {
-                return ResourcePool.GetTextureOrNull(info, scaleFactor) ?? new TextureStorage(this, info, scaleFactor).CreateDefaultView();
+                return ResourcePool.GetTextureOrNull(info) ?? new TextureStorage(this, info).CreateDefaultView();
             }
+        }
+
+        public ITextureArray CreateTextureArray(int size, bool isBuffer)
+        {
+            return new TextureArray(size);
         }
 
         public void DeleteBuffer(BufferHandle buffer)
@@ -116,7 +128,7 @@ namespace Ryujinx.Graphics.OpenGL
 
         public HardwareInfo GetHardwareInfo()
         {
-            return new HardwareInfo(GpuVendor, GpuRenderer);
+            return new HardwareInfo(GpuVendor, GpuRenderer, GpuVendor); // OpenGL does not provide a driver name, vendor name is closest analogue.
         }
 
         public PinnedSpan<byte> GetBufferData(BufferHandle buffer, int offset, int size)
@@ -133,6 +145,7 @@ namespace Ryujinx.Graphics.OpenGL
             return new Capabilities(
                 api: TargetApi.OpenGL,
                 vendorName: GpuVendor,
+                memoryType: SystemMemoryType.BackendManaged,
                 hasFrontFacingBug: intelWindows,
                 hasVectorIndexingBug: amdWindows,
                 needsFragmentOutputSpecialization: false,
@@ -146,8 +159,10 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsBgraFormat: false,
                 supportsR4G4Format: false,
                 supportsR4G4B4A4Format: true,
+                supportsScaledVertexFormats: true,
                 supportsSnormBufferTextureFormat: false,
                 supports5BitComponentFormat: true,
+                supportsSparseBuffer: false,
                 supportsBlendEquationAdvanced: HwCapabilities.SupportsBlendEquationAdvanced,
                 supportsFragmentShaderInterlock: HwCapabilities.SupportsFragmentShaderInterlock,
                 supportsFragmentShaderOrderingIntel: HwCapabilities.SupportsFragmentShaderOrdering,
@@ -159,23 +174,36 @@ namespace Ryujinx.Graphics.OpenGL
                 supportsMismatchingViewFormat: HwCapabilities.SupportsMismatchingViewFormat,
                 supportsCubemapView: true,
                 supportsNonConstantTextureOffset: HwCapabilities.SupportsNonConstantTextureOffset,
+                supportsQuads: HwCapabilities.SupportsQuads,
+                supportsSeparateSampler: false,
                 supportsShaderBallot: HwCapabilities.SupportsShaderBallot,
                 supportsShaderBarrierDivergence: !(intelWindows || intelUnix),
                 supportsShaderFloat64: true,
+                supportsTextureGatherOffsets: true,
                 supportsTextureShadowLod: HwCapabilities.SupportsTextureShadowLod,
+                supportsVertexStoreAndAtomics: true,
                 supportsViewportIndexVertexTessellation: HwCapabilities.SupportsShaderViewportLayerArray,
                 supportsViewportMask: HwCapabilities.SupportsViewportArray2,
                 supportsViewportSwizzle: HwCapabilities.SupportsViewportSwizzle,
                 supportsIndirectParameters: HwCapabilities.SupportsIndirectParameters,
                 supportsDepthClipControl: true,
+                uniformBufferSetIndex: 0,
+                storageBufferSetIndex: 1,
+                textureSetIndex: 2,
+                imageSetIndex: 3,
+                extraSetBaseIndex: 0,
+                maximumExtraSets: 0,
                 maximumUniformBuffersPerStage: 13, // TODO: Avoid hardcoding those limits here and get from driver?
                 maximumStorageBuffersPerStage: 16,
                 maximumTexturesPerStage: 32,
                 maximumImagesPerStage: 8,
                 maximumComputeSharedMemorySize: HwCapabilities.MaximumComputeSharedMemorySize,
                 maximumSupportedAnisotropy: HwCapabilities.MaximumSupportedAnisotropy,
+                shaderSubgroupSize: Constants.MaxSubgroupSize,
                 storageBufferOffsetAlignment: HwCapabilities.StorageBufferOffsetAlignment,
-                gatherBiasPrecision: intelWindows || amdWindows ? 8 : 0); // Precision is 8 for these vendors on Vulkan.
+                textureBufferOffsetAlignment: HwCapabilities.TextureBufferOffsetAlignment,
+                gatherBiasPrecision: intelWindows || amdWindows ? 8 : 0, // Precision is 8 for these vendors on Vulkan.
+                maximumGpuMemory: 0);
         }
 
         public void SetBufferData(BufferHandle buffer, int offset, ReadOnlySpan<byte> data)
@@ -194,9 +222,9 @@ namespace Ryujinx.Graphics.OpenGL
             ResourcePool.Tick();
         }
 
-        public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, bool hostReserved)
+        public ICounterEvent ReportCounter(CounterType type, EventHandler<ulong> resultHandler, float divisor, bool hostReserved)
         {
-            return _counters.QueueReport(type, resultHandler, _pipeline.DrawCount, hostReserved);
+            return _counters.QueueReport(type, resultHandler, divisor, _pipeline.DrawCount, hostReserved);
         }
 
         public void Initialize(GraphicsDebugLevel glLogLevel)
@@ -210,8 +238,7 @@ namespace Ryujinx.Graphics.OpenGL
                 GL.Arb.MaxShaderCompilerThreads(Math.Min(Environment.ProcessorCount, 8));
             }
 
-            _pipeline.Initialize(this);
-            _counters.Initialize(_pipeline);
+            _counters.Initialize();
 
             // This is required to disable [0, 1] clamping for SNorm outputs on compatibility profiles.
             // This call is expected to fail if we're running with a core profile,
@@ -222,9 +249,9 @@ namespace Ryujinx.Graphics.OpenGL
 
         private void PrintGpuInformation()
         {
-            GpuVendor   = GL.GetString(StringName.Vendor);
+            GpuVendor = GL.GetString(StringName.Vendor);
             GpuRenderer = GL.GetString(StringName.Renderer);
-            GpuVersion  = GL.GetString(StringName.Version);
+            GpuVersion = GL.GetString(StringName.Version);
 
             Logger.Notice.Print(LogClass.Gpu, $"{GpuVendor} {GpuRenderer} ({GpuVersion})");
         }
@@ -238,7 +265,7 @@ namespace Ryujinx.Graphics.OpenGL
         {
             // alwaysBackground is ignored, since we cannot switch from the current context.
 
-            if (IOpenGLContext.HasContext())
+            if (_window.BackgroundContext.HasContext())
             {
                 action(); // We have a context already - use that (assuming it is the main one).
             }

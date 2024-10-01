@@ -9,12 +9,12 @@ namespace Ryujinx.Graphics.OpenGL
     {
         [ThreadStatic]
         public static bool InBackground;
-        private Thread _thread;
+        private readonly Thread _thread;
         private bool _running;
 
-        private AutoResetEvent _signal;
-        private Queue<Action> _work;
-        private ObjectPool<ManualResetEventSlim> _invokePool;
+        private readonly AutoResetEvent _signal;
+        private readonly Queue<Action> _work;
+        private readonly ObjectPool<ManualResetEventSlim> _invokePool;
         private readonly IOpenGLContext _backgroundContext;
 
         public BackgroundContextWorker(IOpenGLContext backgroundContext)
@@ -29,6 +29,8 @@ namespace Ryujinx.Graphics.OpenGL
             _thread = new Thread(Run);
             _thread.Start();
         }
+
+        public bool HasContext() => _backgroundContext.HasContext();
 
         private void Run()
         {

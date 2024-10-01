@@ -16,7 +16,7 @@ namespace Ryujinx.Audio.Renderer.Common
         /// <summary>
         /// Reserved/padding.
         /// </summary>
-        private uint _padding;
+        private readonly uint _padding;
 
         /// <summary>
         /// The flags given controlling behaviour of the audio renderer
@@ -25,7 +25,7 @@ namespace Ryujinx.Audio.Renderer.Common
         public ulong Flags;
 
         /// <summary>
-        /// Represents an error during <see cref="Server.AudioRenderSystem.Update(System.Memory{byte}, System.Memory{byte}, System.ReadOnlyMemory{byte})"/>.
+        /// Represents an error during <see cref="Server.AudioRenderSystem.Update(System.Memory{byte}, System.Memory{byte}, System.Buffers.ReadOnlySequence{byte})"/>.
         /// </summary>
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct ErrorInfo
@@ -38,7 +38,7 @@ namespace Ryujinx.Audio.Renderer.Common
             /// <summary>
             /// Reserved/padding.
             /// </summary>
-            private uint _padding;
+            private readonly uint _padding;
 
             /// <summary>
             /// Extra information given with the <see cref="ResultCode"/>

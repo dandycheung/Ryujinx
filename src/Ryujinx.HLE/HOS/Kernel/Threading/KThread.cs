@@ -68,10 +68,10 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
 
         public LinkedListNode<KThread> ProcessListNode { get; set; }
 
-        private LinkedList<KThread> _mutexWaiters;
+        private readonly LinkedList<KThread> _mutexWaiters;
         private LinkedListNode<KThread> _mutexWaiterNode;
 
-        private LinkedList<KThread> _pinnedWaiters;
+        private readonly LinkedList<KThread> _pinnedWaiters;
 
         public KThread MutexOwner { get; private set; }
 
@@ -143,9 +143,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             PreferredCore = cpuCore;
             AffinityMask |= 1UL << cpuCore;
 
-            SchedFlags = type == ThreadType.Dummy
-                ? ThreadSchedState.Running
-                : ThreadSchedState.None;
+            SchedFlags = ThreadSchedState.None;
 
             ActiveCore = cpuCore;
             ObjSyncResult = KernelResult.ThreadNotStarted;
@@ -659,7 +657,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
             const int MaxRegistersAArch32 = 15;
             const int MaxFpuRegistersAArch32 = 16;
 
-            ThreadContext context = new ThreadContext();
+            ThreadContext context = new();
 
             if (Owner.Flags.HasFlag(ProcessCreationFlags.Is64Bit))
             {
@@ -1055,6 +1053,7 @@ namespace Ryujinx.HLE.HOS.Kernel.Threading
                     // If the thread is not schedulable, we want to just run or pause
                     // it directly as we don't care about priority or the core it is
                     // running on in this case.
+
                     if (SchedFlags == ThreadSchedState.Running)
                     {
                         _schedulerWaitEvent.Set();

@@ -6,7 +6,6 @@ using ARMeilleure.Translation;
 using System;
 using System.Diagnostics;
 using System.Reflection;
-
 using static ARMeilleure.Instructions.InstEmitHelper;
 using static ARMeilleure.Instructions.InstEmitSimdHelper;
 using static ARMeilleure.IntermediateRepresentation.Operand.Factory;
@@ -17,12 +16,12 @@ namespace ARMeilleure.Instructions
 
     static partial class InstEmit
     {
-#region "Masks"
+        #region "Masks"
         private static readonly long[] _masks_SliSri = new long[] // Replication masks.
         {
-            0x0101010101010101L, 0x0001000100010001L, 0x0000000100000001L, 0x0000000000000001L
+            0x0101010101010101L, 0x0001000100010001L, 0x0000000100000001L, 0x0000000000000001L,
         };
-#endregion
+        #endregion
 
         public static void Rshrn_V(ArmEmitterContext context)
         {
@@ -51,9 +50,15 @@ namespace ARMeilleure.Instructions
 
                 switch (op.Size + 1)
                 {
-                    case 1: mask = X86GetAllElements(context, (int)roundConst * 0x00010001); break;
-                    case 2: mask = X86GetAllElements(context, (int)roundConst); break;
-                    case 3: mask = X86GetAllElements(context,      roundConst); break;
+                    case 1:
+                        mask = X86GetAllElements(context, (int)roundConst * 0x00010001);
+                        break;
+                    case 2:
+                        mask = X86GetAllElements(context, (int)roundConst);
+                        break;
+                    case 3:
+                        mask = X86GetAllElements(context, roundConst);
+                        break;
                 }
 
                 Intrinsic addInst = X86PaddInstruction[op.Size + 1];
@@ -111,7 +116,7 @@ namespace ARMeilleure.Instructions
             }
             else if (shift >= eSize)
             {
-                if ((op.RegisterSize == RegisterSize.Simd64))
+                if (op.RegisterSize == RegisterSize.Simd64)
                 {
                     Operand res = context.VectorZeroUpper64(GetVec(op.Rd));
 
@@ -352,6 +357,16 @@ namespace ARMeilleure.Instructions
             {
                 EmitShlRegOp(context, ShlRegFlags.Signed | ShlRegFlags.Saturating);
             }
+        }
+
+        public static void Sqshl_Si(ArmEmitterContext context)
+        {
+            EmitShlImmOp(context, signedDst: true, ShlRegFlags.Signed | ShlRegFlags.Scalar | ShlRegFlags.Saturating);
+        }
+
+        public static void Sqshl_Vi(ArmEmitterContext context)
+        {
+            EmitShlImmOp(context, signedDst: true, ShlRegFlags.Signed | ShlRegFlags.Saturating);
         }
 
         public static void Sqshrn_S(ArmEmitterContext context)
@@ -1174,14 +1189,14 @@ namespace ARMeilleure.Instructions
             Scalar = 1 << 0,
             Signed = 1 << 1,
 
-            Round      = 1 << 2,
+            Round = 1 << 2,
             Accumulate = 1 << 3,
 
             ScalarSx = Scalar | Signed,
             ScalarZx = Scalar,
 
             VectorSx = Signed,
-            VectorZx = 0
+            VectorZx = 0,
         }
 
         private static void EmitScalarShrImmOpSx(ArmEmitterContext context, ShrImmFlags flags)
@@ -1210,9 +1225,9 @@ namespace ARMeilleure.Instructions
 
             Operand res = context.VectorZero();
 
-            bool scalar     = (flags & ShrImmFlags.Scalar)     != 0;
-            bool signed     = (flags & ShrImmFlags.Signed)     != 0;
-            bool round      = (flags & ShrImmFlags.Round)      != 0;
+            bool scalar = (flags & ShrImmFlags.Scalar) != 0;
+            bool signed = (flags & ShrImmFlags.Signed) != 0;
+            bool round = (flags & ShrImmFlags.Round) != 0;
             bool accumulate = (flags & ShrImmFlags.Accumulate) != 0;
 
             int shift = GetImmShr(op);
@@ -1288,7 +1303,7 @@ namespace ARMeilleure.Instructions
         [Flags]
         private enum ShrImmSaturatingNarrowFlags
         {
-            Scalar    = 1 << 0,
+            Scalar = 1 << 0,
             SignedSrc = 1 << 1,
             SignedDst = 1 << 2,
 
@@ -1300,7 +1315,7 @@ namespace ARMeilleure.Instructions
 
             VectorSxSx = SignedSrc | SignedDst,
             VectorSxZx = SignedSrc,
-            VectorZxZx = 0
+            VectorZxZx = 0,
         }
 
         private static void EmitRoundShrImmSaturatingNarrowOp(ArmEmitterContext context, ShrImmSaturatingNarrowFlags flags)
@@ -1312,10 +1327,10 @@ namespace ARMeilleure.Instructions
         {
             OpCodeSimdShImm op = (OpCodeSimdShImm)context.CurrOp;
 
-            bool scalar    = (flags & ShrImmSaturatingNarrowFlags.Scalar)    != 0;
+            bool scalar = (flags & ShrImmSaturatingNarrowFlags.Scalar) != 0;
             bool signedSrc = (flags & ShrImmSaturatingNarrowFlags.SignedSrc) != 0;
             bool signedDst = (flags & ShrImmSaturatingNarrowFlags.SignedDst) != 0;
-            bool round     = (flags & ShrImmSaturatingNarrowFlags.Round)     != 0;
+            bool round = (flags & ShrImmSaturatingNarrowFlags.Round) != 0;
 
             int shift = GetImmShr(op);
 
@@ -1585,7 +1600,100 @@ namespace ARMeilleure.Instructions
             Scalar = 1 << 0,
             Signed = 1 << 1,
             Round = 1 << 2,
-            Saturating = 1 << 3
+            Saturating = 1 << 3,
+        }
+
+        private static void EmitShlImmOp(ArmEmitterContext context, bool signedDst, ShlRegFlags flags = ShlRegFlags.None)
+        {
+            bool scalar = flags.HasFlag(ShlRegFlags.Scalar);
+            bool signed = flags.HasFlag(ShlRegFlags.Signed);
+            bool saturating = flags.HasFlag(ShlRegFlags.Saturating);
+
+            OpCodeSimdShImm op = (OpCodeSimdShImm)context.CurrOp;
+
+            Operand res = context.VectorZero();
+
+            int elems = !scalar ? op.GetBytesCount() >> op.Size : 1;
+
+            for (int index = 0; index < elems; index++)
+            {
+                Operand ne = EmitVectorExtract(context, op.Rn, index, op.Size, signed);
+
+                Operand e = !saturating
+                    ? EmitShlImm(context, ne, GetImmShl(op), op.Size)
+                    : EmitShlImmSatQ(context, ne, GetImmShl(op), op.Size, signed, signedDst);
+
+                res = EmitVectorInsert(context, res, e, index, op.Size);
+            }
+
+            context.Copy(GetVec(op.Rd), res);
+        }
+
+        private static Operand EmitShlImm(ArmEmitterContext context, Operand op, int shiftLsB, int size)
+        {
+            int eSize = 8 << size;
+
+            Debug.Assert(op.Type == OperandType.I64);
+            Debug.Assert(eSize == 8 || eSize == 16 || eSize == 32 || eSize == 64);
+
+            Operand res = context.AllocateLocal(OperandType.I64);
+
+            if (shiftLsB >= eSize)
+            {
+                Operand shl = context.ShiftLeft(op, Const(shiftLsB));
+                context.Copy(res, shl);
+            }
+            else
+            {
+                Operand zeroL = Const(0L);
+                context.Copy(res, zeroL);
+            }
+
+            return res;
+        }
+
+        private static Operand EmitShlImmSatQ(ArmEmitterContext context, Operand op, int shiftLsB, int size, bool signedSrc, bool signedDst)
+        {
+            int eSize = 8 << size;
+
+            Debug.Assert(op.Type == OperandType.I64);
+            Debug.Assert(eSize == 8 || eSize == 16 || eSize == 32 || eSize == 64);
+
+            Operand lblEnd = Label();
+
+            Operand res = context.Copy(context.AllocateLocal(OperandType.I64), op);
+
+            if (shiftLsB >= eSize)
+            {
+                context.Copy(res, signedSrc
+                    ? EmitSignedSignSatQ(context, op, size)
+                    : EmitUnsignedSignSatQ(context, op, size));
+            }
+            else
+            {
+                Operand shl = context.ShiftLeft(op, Const(shiftLsB));
+                if (eSize == 64)
+                {
+                    Operand sarOrShr = signedSrc
+                        ? context.ShiftRightSI(shl, Const(shiftLsB))
+                        : context.ShiftRightUI(shl, Const(shiftLsB));
+                    context.Copy(res, shl);
+                    context.BranchIf(lblEnd, sarOrShr, op, Comparison.Equal);
+                    context.Copy(res, signedSrc
+                        ? EmitSignedSignSatQ(context, op, size)
+                        : EmitUnsignedSignSatQ(context, op, size));
+                }
+                else
+                {
+                    context.Copy(res, signedSrc
+                        ? EmitSignedSrcSatQ(context, shl, size, signedDst)
+                        : EmitUnsignedSrcSatQ(context, shl, size, signedDst));
+                }
+            }
+
+            context.MarkLabel(lblEnd);
+
+            return res;
         }
 
         private static void EmitShlRegOp(ArmEmitterContext context, ShlRegFlags flags = ShlRegFlags.None)

@@ -33,21 +33,21 @@ namespace Ryujinx.Audio.Renderer.Server.Effect
             return WorkBuffers[index].GetReference(true);
         }
 
-        public override void Update(out BehaviourParameter.ErrorInfo updateErrorInfo, ref EffectInParameterVersion1 parameter, PoolMapper mapper)
+        public override void Update(out BehaviourParameter.ErrorInfo updateErrorInfo, in EffectInParameterVersion1 parameter, PoolMapper mapper)
         {
-            Update(out updateErrorInfo, ref parameter, mapper);
+            Update(out updateErrorInfo, in parameter, mapper);
         }
 
-        public override void Update(out BehaviourParameter.ErrorInfo updateErrorInfo, ref EffectInParameterVersion2 parameter, PoolMapper mapper)
+        public override void Update(out BehaviourParameter.ErrorInfo updateErrorInfo, in EffectInParameterVersion2 parameter, PoolMapper mapper)
         {
-            Update(out updateErrorInfo, ref parameter, mapper);
+            Update(out updateErrorInfo, in parameter, mapper);
         }
 
-        public void Update<T>(out BehaviourParameter.ErrorInfo updateErrorInfo, ref T parameter, PoolMapper mapper) where T : unmanaged, IEffectInParameter
+        public void Update<T>(out BehaviourParameter.ErrorInfo updateErrorInfo, in T parameter, PoolMapper mapper) where T : unmanaged, IEffectInParameter
         {
-            Debug.Assert(IsTypeValid(ref parameter));
+            Debug.Assert(IsTypeValid(in parameter));
 
-            UpdateParameterBase(ref parameter);
+            UpdateParameterBase(in parameter);
 
             Parameter = MemoryMarshal.Cast<byte, AuxiliaryBufferParameter>(parameter.SpecificData)[0];
             IsEnabled = parameter.IsEnabled;
@@ -58,7 +58,7 @@ namespace Ryujinx.Audio.Renderer.Server.Effect
             {
                 ulong bufferSize = (ulong)Unsafe.SizeOf<int>() * Parameter.BufferStorageSize + (ulong)Unsafe.SizeOf<AuxiliaryBufferHeader>();
 
-                bool sendBufferUnmapped = !mapper.TryAttachBuffer(out updateErrorInfo, ref WorkBuffers[0], Parameter.SendBufferInfoAddress, bufferSize);
+                bool sendBufferUnmapped = !mapper.TryAttachBuffer(out _, ref WorkBuffers[0], Parameter.SendBufferInfoAddress, bufferSize);
                 bool returnBufferUnmapped = !mapper.TryAttachBuffer(out updateErrorInfo, ref WorkBuffers[1], Parameter.ReturnBufferInfoAddress, bufferSize);
 
                 BufferUnmapped = sendBufferUnmapped && returnBufferUnmapped;

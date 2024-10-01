@@ -9,13 +9,13 @@ namespace Ryujinx.Audio.Backends.Dummy
     internal class DummyHardwareDeviceSessionOutput : HardwareDeviceSessionOutputBase
     {
         private float _volume;
-        private IHardwareDeviceDriver _manager;
+        private readonly IHardwareDeviceDriver _manager;
 
         private ulong _playedSampleCount;
 
-        public DummyHardwareDeviceSessionOutput(IHardwareDeviceDriver manager, IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount, float requestedVolume) : base(memoryManager, requestedSampleFormat, requestedSampleRate, requestedChannelCount)
+        public DummyHardwareDeviceSessionOutput(IHardwareDeviceDriver manager, IVirtualMemoryManager memoryManager, SampleFormat requestedSampleFormat, uint requestedSampleRate, uint requestedChannelCount) : base(memoryManager, requestedSampleFormat, requestedSampleRate, requestedChannelCount)
         {
-            _volume = requestedVolume;
+            _volume = 1f;
             _manager = manager;
         }
 

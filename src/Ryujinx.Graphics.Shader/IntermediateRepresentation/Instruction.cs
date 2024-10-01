@@ -79,8 +79,6 @@ namespace Ryujinx.Graphics.Shader.IntermediateRepresentation
         ImageAtomic,
         IsNan,
         Load,
-        LoadLocal,
-        LoadShared,
         Lod,
         LogarithmB2,
         LogicalAnd,
@@ -115,14 +113,11 @@ namespace Ryujinx.Graphics.Shader.IntermediateRepresentation
         Sine,
         SquareRoot,
         Store,
-        StoreLocal,
-        StoreShared,
-        StoreShared16,
-        StoreShared8,
         Subtract,
         SwizzleAdd,
         TextureSample,
-        TextureSize,
+        TextureQuerySamples,
+        TextureQuerySize,
         Truncate,
         UnpackDouble2x32,
         UnpackHalf2x16,
@@ -136,7 +131,7 @@ namespace Ryujinx.Graphics.Shader.IntermediateRepresentation
         FP32 = 1 << 16,
         FP64 = 1 << 17,
 
-        Mask = 0xffff
+        Mask = 0xffff,
     }
 
     static class InstructionExtensions
@@ -161,10 +156,42 @@ namespace Ryujinx.Graphics.Shader.IntermediateRepresentation
             return false;
         }
 
+        public static bool IsComparison(this Instruction inst)
+        {
+            switch (inst & Instruction.Mask)
+            {
+                case Instruction.CompareEqual:
+                case Instruction.CompareGreater:
+                case Instruction.CompareGreaterOrEqual:
+                case Instruction.CompareGreaterOrEqualU32:
+                case Instruction.CompareGreaterU32:
+                case Instruction.CompareLess:
+                case Instruction.CompareLessOrEqual:
+                case Instruction.CompareLessOrEqualU32:
+                case Instruction.CompareLessU32:
+                case Instruction.CompareNotEqual:
+                    return true;
+            }
+
+            return false;
+        }
+
         public static bool IsTextureQuery(this Instruction inst)
         {
             inst &= Instruction.Mask;
-            return inst == Instruction.Lod || inst == Instruction.TextureSize;
+            return inst == Instruction.Lod || inst == Instruction.TextureQuerySamples || inst == Instruction.TextureQuerySize;
+        }
+
+        public static bool IsImage(this Instruction inst)
+        {
+            inst &= Instruction.Mask;
+            return inst == Instruction.ImageAtomic || inst == Instruction.ImageLoad || inst == Instruction.ImageStore;
+        }
+
+        public static bool IsImageStore(this Instruction inst)
+        {
+            inst &= Instruction.Mask;
+            return inst == Instruction.ImageAtomic || inst == Instruction.ImageStore;
         }
     }
 }

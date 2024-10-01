@@ -4,6 +4,7 @@ namespace Ryujinx.Graphics.GAL
     {
         Bilinear,
         Nearest,
-        Fsr
+        Fsr,
+        Area,
     }
 }

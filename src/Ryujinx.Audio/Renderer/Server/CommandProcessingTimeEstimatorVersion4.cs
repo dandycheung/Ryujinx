@@ -10,11 +10,11 @@ namespace Ryujinx.Audio.Renderer.Server
     {
         public CommandProcessingTimeEstimatorVersion4(uint sampleCount, uint bufferCount) : base(sampleCount, bufferCount) { }
 
-        public override uint Estimate(GroupedBiquadFilterCommand command)
+        public override uint Estimate(MultiTapBiquadFilterCommand command)
         {
-            Debug.Assert(_sampleCount == 160 || _sampleCount == 240);
+            Debug.Assert(SampleCount == 160 || SampleCount == 240);
 
-            if (_sampleCount == 160)
+            if (SampleCount == 160)
             {
                 return (uint)7424.5f;
             }
@@ -24,9 +24,9 @@ namespace Ryujinx.Audio.Renderer.Server
 
         public override uint Estimate(CaptureBufferCommand command)
         {
-            Debug.Assert(_sampleCount == 160 || _sampleCount == 240);
+            Debug.Assert(SampleCount == 160 || SampleCount == 240);
 
-            if (_sampleCount == 160)
+            if (SampleCount == 160)
             {
                 if (command.Enabled)
                 {

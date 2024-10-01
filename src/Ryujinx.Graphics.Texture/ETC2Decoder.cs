@@ -1,4 +1,5 @@
 using Ryujinx.Common;
+using Ryujinx.Common.Memory;
 using System;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
@@ -21,12 +22,12 @@ namespace Ryujinx.Graphics.Texture
             new int[] { 18, 60, -18, -60 },
             new int[] { 24, 80, -24, -80 },
             new int[] { 33, 106, -33, -106 },
-            new int[] { 47, 183, -47, -183 }
+            new int[] { 47, 183, -47, -183 },
         };
 
         private static readonly int[] _etc2Lut =
         {
-            3, 6, 11, 16, 23, 32, 41, 64
+            3, 6, 11, 16, 23, 32, 41, 64,
         };
 
         private static readonly int[][] _etc2AlphaLut =
@@ -46,18 +47,18 @@ namespace Ryujinx.Graphics.Texture
             new int[] { -3, -4, -7, -10, 2, 3, 6, 9 },
             new int[] { -1, -2, -3, -10, 0, 1, 2, 9 },
             new int[] { -4, -6, -8, -9, 3, 5, 7, 8 },
-            new int[] { -3, -5, -7, -9, 2, 4, 6, 8 }
+            new int[] { -3, -5, -7, -9, 2, 4, 6, 8 },
         };
 
-        public static byte[] DecodeRgb(ReadOnlySpan<byte> data, int width, int height, int depth, int levels, int layers)
+        public static MemoryOwner<byte> DecodeRgb(ReadOnlySpan<byte> data, int width, int height, int depth, int levels, int layers)
         {
             ReadOnlySpan<ulong> dataUlong = MemoryMarshal.Cast<byte, ulong>(data);
 
             int inputOffset = 0;
 
-            byte[] output = new byte[CalculateOutputSize(width, height, depth, levels, layers)];
+            MemoryOwner<byte> output = MemoryOwner<byte>.Rent(CalculateOutputSize(width, height, depth, levels, layers));
 
-            Span<uint> outputUint = MemoryMarshal.Cast<byte, uint>(output);
+            Span<uint> outputUint = MemoryMarshal.Cast<byte, uint>(output.Span);
             Span<uint> tile = stackalloc uint[BlockWidth * BlockHeight];
 
             int imageBaseOOffs = 0;
@@ -111,15 +112,15 @@ namespace Ryujinx.Graphics.Texture
             return output;
         }
 
-        public static byte[] DecodePta(ReadOnlySpan<byte> data, int width, int height, int depth, int levels, int layers)
+        public static MemoryOwner<byte> DecodePta(ReadOnlySpan<byte> data, int width, int height, int depth, int levels, int layers)
         {
             ReadOnlySpan<ulong> dataUlong = MemoryMarshal.Cast<byte, ulong>(data);
 
             int inputOffset = 0;
 
-            byte[] output = new byte[CalculateOutputSize(width, height, depth, levels, layers)];
+            MemoryOwner<byte> output = MemoryOwner<byte>.Rent(CalculateOutputSize(width, height, depth, levels, layers));
 
-            Span<uint> outputUint = MemoryMarshal.Cast<byte, uint>(output);
+            Span<uint> outputUint = MemoryMarshal.Cast<byte, uint>(output.Span);
             Span<uint> tile = stackalloc uint[BlockWidth * BlockHeight];
 
             int imageBaseOOffs = 0;
@@ -168,15 +169,15 @@ namespace Ryujinx.Graphics.Texture
             return output;
         }
 
-        public static byte[] DecodeRgba(ReadOnlySpan<byte> data, int width, int height, int depth, int levels, int layers)
+        public static MemoryOwner<byte> DecodeRgba(ReadOnlySpan<byte> data, int width, int height, int depth, int levels, int layers)
         {
             ReadOnlySpan<ulong> dataUlong = MemoryMarshal.Cast<byte, ulong>(data);
 
             int inputOffset = 0;
 
-            byte[] output = new byte[CalculateOutputSize(width, height, depth, levels, layers)];
+            MemoryOwner<byte> output = MemoryOwner<byte>.Rent(CalculateOutputSize(width, height, depth, levels, layers));
 
-            Span<uint> outputUint = MemoryMarshal.Cast<byte, uint>(output);
+            Span<uint> outputUint = MemoryMarshal.Cast<byte, uint>(output.Span);
             Span<uint> tile = stackalloc uint[BlockWidth * BlockHeight];
 
             int imageBaseOOffs = 0;

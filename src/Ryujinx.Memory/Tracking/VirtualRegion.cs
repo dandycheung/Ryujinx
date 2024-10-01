@@ -1,4 +1,4 @@
-﻿using Ryujinx.Memory.Range;
+using Ryujinx.Memory.Range;
 using System.Collections.Generic;
 
 namespace Ryujinx.Memory.Tracking
@@ -8,15 +8,19 @@ namespace Ryujinx.Memory.Tracking
     /// </summary>
     class VirtualRegion : AbstractRegion
     {
-        public List<RegionHandle> Handles = new List<RegionHandle>();
+        public List<RegionHandle> Handles = new();
 
         private readonly MemoryTracking _tracking;
         private MemoryPermission _lastPermission;
 
-        public VirtualRegion(MemoryTracking tracking, ulong address, ulong size, MemoryPermission lastPermission = MemoryPermission.Invalid) : base(address, size)
+        public bool Guest { get; }
+
+        public VirtualRegion(MemoryTracking tracking, ulong address, ulong size, bool guest, MemoryPermission lastPermission = MemoryPermission.Invalid) : base(address, size)
         {
             _lastPermission = lastPermission;
             _tracking = tracking;
+
+            Guest = guest;
         }
 
         /// <inheritdoc/>
@@ -66,9 +70,12 @@ namespace Ryujinx.Memory.Tracking
         {
             _lastPermission = MemoryPermission.Invalid;
 
-            foreach (RegionHandle handle in Handles)
+            if (!Guest)
             {
-                handle.SignalMappingChanged(mapped);
+                foreach (RegionHandle handle in Handles)
+                {
+                    handle.SignalMappingChanged(mapped);
+                }
             }
         }
 
@@ -86,7 +93,10 @@ namespace Ryujinx.Memory.Tracking
             foreach (var handle in Handles)
             {
                 result &= handle.RequiredPermission;
-                if (result == 0) return result;
+                if (result == 0)
+                {
+                    return result;
+                }
             }
             return result;
         }
@@ -100,7 +110,7 @@ namespace Ryujinx.Memory.Tracking
 
             if (_lastPermission != permission)
             {
-                _tracking.ProtectVirtualRegion(this, permission);
+                _tracking.ProtectVirtualRegion(this, permission, Guest);
                 _lastPermission = permission;
 
                 return true;
@@ -128,7 +138,7 @@ namespace Ryujinx.Memory.Tracking
 
         public override INonOverlappingRange Split(ulong splitAddress)
         {
-            VirtualRegion newRegion = new VirtualRegion(_tracking, splitAddress, EndAddress - splitAddress, _lastPermission);
+            VirtualRegion newRegion = new(_tracking, splitAddress, EndAddress - splitAddress, Guest, _lastPermission);
             Size = splitAddress - Address;
 
             // The new region inherits all of our parents.

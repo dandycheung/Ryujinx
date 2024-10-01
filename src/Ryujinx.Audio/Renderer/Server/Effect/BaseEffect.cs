@@ -81,7 +81,7 @@ namespace Ryujinx.Audio.Renderer.Server.Effect
         /// </summary>
         /// <param name="parameter">The user parameter.</param>
         /// <returns>Returns true if the <see cref="EffectType"/> sent by the user matches the internal <see cref="EffectType"/>.</returns>
-        public bool IsTypeValid<T>(ref T parameter) where T : unmanaged, IEffectInParameter
+        public bool IsTypeValid<T>(in T parameter) where T : unmanaged, IEffectInParameter
         {
             return parameter.Type == TargetEffectType;
         }
@@ -98,7 +98,7 @@ namespace Ryujinx.Audio.Renderer.Server.Effect
         /// Update the internal common parameters from a user parameter.
         /// </summary>
         /// <param name="parameter">The user parameter.</param>
-        protected void UpdateParameterBase<T>(ref T parameter) where T : unmanaged, IEffectInParameter
+        protected void UpdateParameterBase<T>(in T parameter) where T : unmanaged, IEffectInParameter
         {
             MixId = parameter.MixId;
             ProcessingOrder = parameter.ProcessingOrder;
@@ -139,7 +139,7 @@ namespace Ryujinx.Audio.Renderer.Server.Effect
         /// <summary>
         /// Initialize the given <paramref name="state"/> result state.
         /// </summary>
-        /// <param name="state">The state to initalize</param>
+        /// <param name="state">The state to initialize</param>
         public virtual void InitializeResultState(ref EffectResultState state) { }
 
         /// <summary>
@@ -155,9 +155,9 @@ namespace Ryujinx.Audio.Renderer.Server.Effect
         /// <param name="updateErrorInfo">The possible <see cref="ErrorInfo"/> that was generated.</param>
         /// <param name="parameter">The user parameter.</param>
         /// <param name="mapper">The mapper to use.</param>
-        public virtual void Update(out ErrorInfo updateErrorInfo, ref EffectInParameterVersion1 parameter, PoolMapper mapper)
+        public virtual void Update(out ErrorInfo updateErrorInfo, in EffectInParameterVersion1 parameter, PoolMapper mapper)
         {
-            Debug.Assert(IsTypeValid(ref parameter));
+            Debug.Assert(IsTypeValid(in parameter));
 
             updateErrorInfo = new ErrorInfo();
         }
@@ -168,9 +168,9 @@ namespace Ryujinx.Audio.Renderer.Server.Effect
         /// <param name="updateErrorInfo">The possible <see cref="ErrorInfo"/> that was generated.</param>
         /// <param name="parameter">The user parameter.</param>
         /// <param name="mapper">The mapper to use.</param>
-        public virtual void Update(out ErrorInfo updateErrorInfo, ref EffectInParameterVersion2 parameter, PoolMapper mapper)
+        public virtual void Update(out ErrorInfo updateErrorInfo, in EffectInParameterVersion2 parameter, PoolMapper mapper)
         {
-            Debug.Assert(IsTypeValid(ref parameter));
+            Debug.Assert(IsTypeValid(in parameter));
 
             updateErrorInfo = new ErrorInfo();
         }
@@ -244,29 +244,19 @@ namespace Ryujinx.Audio.Renderer.Server.Effect
         /// <returns>The <see cref="PerformanceDetailType"/> associated to the <see cref="Type"/> of this effect.</returns>
         public PerformanceDetailType GetPerformanceDetailType()
         {
-            switch (Type)
+            return Type switch
             {
-                case EffectType.BiquadFilter:
-                    return PerformanceDetailType.BiquadFilter;
-                case EffectType.AuxiliaryBuffer:
-                    return PerformanceDetailType.Aux;
-                case EffectType.Delay:
-                    return PerformanceDetailType.Delay;
-                case EffectType.Reverb:
-                    return PerformanceDetailType.Reverb;
-                case EffectType.Reverb3d:
-                    return PerformanceDetailType.Reverb3d;
-                case EffectType.BufferMix:
-                    return PerformanceDetailType.Mix;
-                case EffectType.Limiter:
-                    return PerformanceDetailType.Limiter;
-                case EffectType.CaptureBuffer:
-                    return PerformanceDetailType.CaptureBuffer;
-                case EffectType.Compressor:
-                    return PerformanceDetailType.Compressor;
-                default:
-                    throw new NotImplementedException($"{Type}");
-            }
+                EffectType.BiquadFilter => PerformanceDetailType.BiquadFilter,
+                EffectType.AuxiliaryBuffer => PerformanceDetailType.Aux,
+                EffectType.Delay => PerformanceDetailType.Delay,
+                EffectType.Reverb => PerformanceDetailType.Reverb,
+                EffectType.Reverb3d => PerformanceDetailType.Reverb3d,
+                EffectType.BufferMix => PerformanceDetailType.Mix,
+                EffectType.Limiter => PerformanceDetailType.Limiter,
+                EffectType.CaptureBuffer => PerformanceDetailType.CaptureBuffer,
+                EffectType.Compressor => PerformanceDetailType.Compressor,
+                _ => throw new NotImplementedException($"{Type}"),
+            };
         }
     }
 }

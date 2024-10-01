@@ -1,8 +1,9 @@
-﻿using Ryujinx.HLE.HOS.Services.Sockets.Bsd;
+using Ryujinx.HLE.HOS.Services.Sockets.Bsd;
 using Ryujinx.HLE.HOS.Services.Sockets.Bsd.Impl;
 using Ryujinx.HLE.HOS.Services.Ssl.Types;
 using System;
 using System.IO;
+using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
@@ -15,8 +16,8 @@ namespace Ryujinx.HLE.HOS.Services.Ssl.SslService
 
         public ISocket Socket { get; }
 
-        private BsdContext _bsdContext;
-        private SslVersion _sslVersion;
+        private readonly BsdContext _bsdContext;
+        private readonly SslVersion _sslVersion;
         private SslStream _stream;
         private bool _isBlockingSocket;
         private int _previousReadTimeout;
@@ -67,32 +68,56 @@ namespace Ryujinx.HLE.HOS.Services.Ssl.SslService
             EndSslOperation();
         }
 
-// NOTE: We silence warnings about TLS 1.0 and 1.1 as games will likely use it.
+        // NOTE: We silence warnings about TLS 1.0 and 1.1 as games will likely use it.
 #pragma warning disable SYSLIB0039
-        private static SslProtocols TranslateSslVersion(SslVersion version)
+        private SslProtocols TranslateSslVersion(SslVersion version)
         {
-            switch (version & SslVersion.VersionMask)
+            return (version & SslVersion.VersionMask) switch
             {
-                case SslVersion.Auto:
-                    return SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12 | SslProtocols.Tls13;
-                case SslVersion.TlsV10:
-                    return SslProtocols.Tls;
-                case SslVersion.TlsV11:
-                    return SslProtocols.Tls11;
-                case SslVersion.TlsV12:
-                    return SslProtocols.Tls12;
-                case SslVersion.TlsV13:
-                    return SslProtocols.Tls13;
-                default:
-                    throw new NotImplementedException(version.ToString());
-            }
+                SslVersion.Auto => SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12 | SslProtocols.Tls13,
+                SslVersion.TlsV10 => SslProtocols.Tls,
+                SslVersion.TlsV11 => SslProtocols.Tls11,
+                SslVersion.TlsV12 => SslProtocols.Tls12,
+                SslVersion.TlsV13 => SslProtocols.Tls13,
+                _ => throw new NotImplementedException(version.ToString()),
+            };
         }
 #pragma warning restore SYSLIB0039
+
+        /// <summary>
+        /// Retrieve the hostname of the current remote in case the provided hostname is null or empty.
+        /// </summary>
+        /// <param name="hostName">The current hostname</param>
+        /// <returns>Either the resolved or provided hostname</returns>
+        /// <remarks>
+        /// This is done to avoid getting an <see cref="System.Security.Authentication.AuthenticationException"/>
+        /// as the remote certificate will be rejected with <c>RemoteCertificateNameMismatch</c> due to an empty hostname.
+        /// This is not what the switch does!
+        /// It might just skip remote hostname verification if the hostname wasn't set with <see cref="ISslConnection.SetHostName"/> before.
+        /// TODO: Remove this as soon as we know how the switch deals with empty hostnames
+        /// </remarks>
+        private string RetrieveHostName(string hostName)
+        {
+            if (!string.IsNullOrEmpty(hostName))
+            {
+                return hostName;
+            }
+
+            try
+            {
+                return Dns.GetHostEntry(Socket.RemoteEndPoint.Address).HostName;
+            }
+            catch (SocketException)
+            {
+                return hostName;
+            }
+        }
 
         public ResultCode Handshake(string hostName)
         {
             StartSslOperation();
             _stream = new SslStream(new NetworkStream(((ManagedSocket)Socket).Socket, false), false, null, null);
+            hostName = RetrieveHostName(hostName);
             _stream.AuthenticateAsClient(hostName, null, TranslateSslVersion(_sslVersion), false);
             EndSslOperation();
 
@@ -114,7 +139,7 @@ namespace Ryujinx.HLE.HOS.Services.Ssl.SslService
             return 0;
         }
 
-        private static bool TryTranslateWinSockError(bool isBlocking, WsaError error, out ResultCode resultCode)
+        private bool TryTranslateWinSockError(bool isBlocking, WsaError error, out ResultCode resultCode)
         {
             switch (error)
             {
@@ -167,7 +192,7 @@ namespace Ryujinx.HLE.HOS.Services.Ssl.SslService
                 }
                 else
                 {
-                    throw exception;
+                    throw;
                 }
             }
             finally
@@ -212,7 +237,7 @@ namespace Ryujinx.HLE.HOS.Services.Ssl.SslService
                 }
                 else
                 {
-                    throw exception;
+                    throw;
                 }
             }
             finally

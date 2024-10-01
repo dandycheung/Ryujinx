@@ -1,6 +1,5 @@
-﻿using System;
+using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Ryujinx.Memory
@@ -32,7 +31,7 @@ namespace Ryujinx.Memory
         /// </summary>
         /// <param name="size">Size of the memory block in bytes</param>
         /// <param name="flags">Flags that controls memory block memory allocation</param>
-        /// <exception cref="OutOfMemoryException">Throw when there's no enough memory to allocate the requested size</exception>
+        /// <exception cref="SystemException">Throw when there's an error while allocating the requested size</exception>
         /// <exception cref="PlatformNotSupportedException">Throw when the current platform is not supported</exception>
         public MemoryBlock(ulong size, MemoryAllocationFlags flags = MemoryAllocationFlags.None)
         {
@@ -67,7 +66,7 @@ namespace Ryujinx.Memory
         /// </summary>
         /// <param name="size">Size of the memory block in bytes</param>
         /// <param name="sharedMemory">Shared memory to use as backing storage for this block</param>
-        /// <exception cref="OutOfMemoryException">Throw when there's no enough address space left to map the shared memory</exception>
+        /// <exception cref="SystemException">Throw when there's an error while mapping the shared memory</exception>
         /// <exception cref="PlatformNotSupportedException">Throw when the current platform is not supported</exception>
         private MemoryBlock(ulong size, IntPtr sharedMemory)
         {
@@ -83,7 +82,7 @@ namespace Ryujinx.Memory
         /// </summary>
         /// <returns>A new memory block that shares storage with this one</returns>
         /// <exception cref="NotSupportedException">Throw when the current memory block does not support mirroring</exception>
-        /// <exception cref="OutOfMemoryException">Throw when there's no enough address space left to map the shared memory</exception>
+        /// <exception cref="SystemException">Throw when there's an error while mapping the shared memory</exception>
         /// <exception cref="PlatformNotSupportedException">Throw when the current platform is not supported</exception>
         public MemoryBlock CreateMirror()
         {
@@ -101,12 +100,12 @@ namespace Ryujinx.Memory
         /// </summary>
         /// <param name="offset">Starting offset of the range to be committed</param>
         /// <param name="size">Size of the range to be committed</param>
-        /// <returns>True if the operation was successful, false otherwise</returns>
+        /// <exception cref="SystemException">Throw when the operation was not successful</exception>
         /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
         /// <exception cref="InvalidMemoryRegionException">Throw when either <paramref name="offset"/> or <paramref name="size"/> are out of range</exception>
-        public bool Commit(ulong offset, ulong size)
+        public void Commit(ulong offset, ulong size)
         {
-            return MemoryManagement.Commit(GetPointerInternal(offset, size), size, _forJit);
+            MemoryManagement.Commit(GetPointerInternal(offset, size), size, _forJit);
         }
 
         /// <summary>
@@ -115,12 +114,12 @@ namespace Ryujinx.Memory
         /// </summary>
         /// <param name="offset">Starting offset of the range to be decommitted</param>
         /// <param name="size">Size of the range to be decommitted</param>
-        /// <returns>True if the operation was successful, false otherwise</returns>
+        /// <exception cref="SystemException">Throw when the operation was not successful</exception>
         /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
         /// <exception cref="InvalidMemoryRegionException">Throw when either <paramref name="offset"/> or <paramref name="size"/> are out of range</exception>
-        public bool Decommit(ulong offset, ulong size)
+        public void Decommit(ulong offset, ulong size)
         {
-            return MemoryManagement.Decommit(GetPointerInternal(offset, size), size);
+            MemoryManagement.Decommit(GetPointerInternal(offset, size), size);
         }
 
         /// <summary>
@@ -175,7 +174,7 @@ namespace Ryujinx.Memory
         /// <param name="offset">Starting offset of the range being read</param>
         /// <param name="data">Span where the bytes being read will be copied to</param>
         /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
-        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the the data is out of range</exception>
+        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the data is out of range</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Read(ulong offset, Span<byte> data)
         {
@@ -189,7 +188,7 @@ namespace Ryujinx.Memory
         /// <param name="offset">Offset where the data is located</param>
         /// <returns>Data at the specified address</returns>
         /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
-        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the the data is out of range</exception>
+        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the data is out of range</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public T Read<T>(ulong offset) where T : unmanaged
         {
@@ -202,7 +201,7 @@ namespace Ryujinx.Memory
         /// <param name="offset">Starting offset of the range being written</param>
         /// <param name="data">Span where the bytes being written will be copied from</param>
         /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
-        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the the data is out of range</exception>
+        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the data is out of range</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Write(ulong offset, ReadOnlySpan<byte> data)
         {
@@ -216,7 +215,7 @@ namespace Ryujinx.Memory
         /// <param name="offset">Offset to write the data into</param>
         /// <param name="data">Data to be written</param>
         /// <exception cref="ObjectDisposedException">Throw when the memory block has already been disposed</exception>
-        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the the data is out of range</exception>
+        /// <exception cref="InvalidMemoryRegionException">Throw when the memory region specified for the data is out of range</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Write<T>(ulong offset, T data) where T : unmanaged
         {
@@ -365,9 +364,9 @@ namespace Ryujinx.Memory
         /// <param name="pointer">Native pointer</param>
         /// <param name="offset">Offset to add</param>
         /// <returns>Native pointer with the added offset</returns>
-        private IntPtr PtrAddr(IntPtr pointer, ulong offset)
+        private static IntPtr PtrAddr(IntPtr pointer, ulong offset)
         {
-            return (IntPtr)(pointer.ToInt64() + (long)offset);
+            return new IntPtr(pointer.ToInt64() + (long)offset);
         }
 
         /// <summary>

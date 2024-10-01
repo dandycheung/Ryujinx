@@ -17,16 +17,18 @@ namespace Ryujinx.HLE.HOS
         private const int TamperMachineSleepMs = 1000 / 12;
 
         private Thread _tamperThread = null;
-        private ConcurrentQueue<ITamperProgram> _programs = new ConcurrentQueue<ITamperProgram>();
+        private readonly ConcurrentQueue<ITamperProgram> _programs = new();
         private long _pressedKeys = 0;
-        private Dictionary<string, ITamperProgram> _programDictionary = new Dictionary<string, ITamperProgram>();
+        private readonly Dictionary<string, ITamperProgram> _programDictionary = new();
 
         private void Activate()
         {
             if (_tamperThread == null || !_tamperThread.IsAlive)
             {
-                _tamperThread = new Thread(this.TamperRunner);
-                _tamperThread.Name = "HLE.TamperMachine";
+                _tamperThread = new Thread(this.TamperRunner)
+                {
+                    Name = "HLE.TamperMachine",
+                };
                 _tamperThread.Start();
             }
         }
@@ -39,7 +41,7 @@ namespace Ryujinx.HLE.HOS
             }
 
             ITamperedProcess tamperedProcess = new TamperedKProcess(info.Process);
-            AtmosphereCompiler compiler = new AtmosphereCompiler(exeAddress, info.HeapAddress, info.AliasAddress, info.AslrAddress, tamperedProcess);
+            AtmosphereCompiler compiler = new(exeAddress, info.HeapAddress, info.AliasAddress, info.AslrAddress, tamperedProcess);
             ITamperProgram program = compiler.Compile(name, rawInstructions);
 
             if (program != null)
@@ -53,7 +55,7 @@ namespace Ryujinx.HLE.HOS
             Activate();
         }
 
-        private bool CanInstallOnPid(ulong pid)
+        private static bool CanInstallOnPid(ulong pid)
         {
             // Do not allow tampering of kernel processes.
             if (pid < KernelConstants.InitialProcessId)
@@ -82,7 +84,7 @@ namespace Ryujinx.HLE.HOS
             }
         }
 
-        private bool IsProcessValid(ITamperedProcess process)
+        private static bool IsProcessValid(ITamperedProcess process)
         {
             return process.State != ProcessState.Crashed && process.State != ProcessState.Exiting && process.State != ProcessState.Exited;
         }
@@ -141,7 +143,7 @@ namespace Ryujinx.HLE.HOS
 
             try
             {
-                ControllerKeys pressedKeys = (ControllerKeys)Thread.VolatileRead(ref _pressedKeys);
+                ControllerKeys pressedKeys = (ControllerKeys)Volatile.Read(ref _pressedKeys);
                 program.Process.TamperedCodeMemory = false;
                 program.Execute(pressedKeys);
 
@@ -173,14 +175,14 @@ namespace Ryujinx.HLE.HOS
             {
                 if (input.PlayerId == PlayerIndex.Player1 || input.PlayerId == PlayerIndex.Handheld)
                 {
-                    Thread.VolatileWrite(ref _pressedKeys, (long)input.Buttons);
+                    Volatile.Write(ref _pressedKeys, (long)input.Buttons);
 
                     return;
                 }
             }
 
             // Clear the input because player one is not conected.
-            Thread.VolatileWrite(ref _pressedKeys, 0);
+            Volatile.Write(ref _pressedKeys, 0);
         }
     }
 }

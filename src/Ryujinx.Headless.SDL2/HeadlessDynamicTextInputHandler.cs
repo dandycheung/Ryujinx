@@ -1,4 +1,4 @@
-using Ryujinx.HLE.Ui;
+using Ryujinx.HLE.UI;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,8 +12,8 @@ namespace Ryujinx.Headless.SDL2
         private bool _canProcessInput;
 
         public event DynamicTextChangedHandler TextChangedEvent;
-        public event KeyPressedHandler         KeyPressedEvent  { add { } remove { } }
-        public event KeyReleasedHandler        KeyReleasedEvent { add { } remove { } }
+        public event KeyPressedHandler KeyPressedEvent { add { } remove { } }
+        public event KeyReleasedHandler KeyReleasedEvent { add { } remove { } }
 
         public bool TextProcessingEnabled
         {

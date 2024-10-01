@@ -1,4 +1,4 @@
-﻿#define Alu32
+#define Alu32
 
 using NUnit.Framework;
 
@@ -9,8 +9,8 @@ namespace Ryujinx.Tests.Cpu
     {
 #if Alu32
 
-#region "ValueSource (Opcodes)"
-        private static uint[] _SU_H_AddSub_8_()
+        #region "ValueSource (Opcodes)"
+        private static uint[] SuHAddSub8()
         {
             return new[]
             {
@@ -21,22 +21,41 @@ namespace Ryujinx.Tests.Cpu
                 0xe6500f90u, // UADD8  R0, R0, R0
                 0xe6500ff0u, // USUB8  R0, R0, R0
                 0xe6700f90u, // UHADD8 R0, R0, R0
-                0xe6700ff0u  // UHSUB8 R0, R0, R0
+                0xe6700ff0u, // UHSUB8 R0, R0, R0
             };
         }
 
-        private static uint[] _Ssat_Usat_()
+        private static uint[] UQAddSub16()
+        {
+            return new[]
+            {
+                0xe6200f10u, // QADD16  R0, R0, R0
+                0xe6600f10u, // UQADD16 R0, R0, R0
+                0xe6600f70u, // UQSUB16 R0, R0, R0
+            };
+        }
+
+        private static uint[] UQAddSub8()
+        {
+            return new[]
+            {
+                0xe6600f90u, // UQADD8 R0, R0, R0
+                0xe6600ff0u, // UQSUB8 R0, R0, R0
+            };
+        }
+
+        private static uint[] SsatUsat()
         {
             return new[]
             {
                 0xe6a00010u, // SSAT R0, #1, R0, LSL #0
                 0xe6a00050u, // SSAT R0, #1, R0, ASR #32
                 0xe6e00010u, // USAT R0, #0, R0, LSL #0
-                0xe6e00050u  // USAT R0, #0, R0, ASR #32
+                0xe6e00050u, // USAT R0, #0, R0, ASR #32
             };
         }
 
-        private static uint[] _Ssat16_Usat16_()
+        private static uint[] Ssat16Usat16()
         {
             return new[]
             {
@@ -45,17 +64,17 @@ namespace Ryujinx.Tests.Cpu
             };
         }
 
-        private static uint[] _Lsr_Lsl_Asr_Ror_()
+        private static uint[] LsrLslAsrRor()
         {
             return new[]
             {
                 0xe1b00030u, // LSRS R0, R0, R0
                 0xe1b00010u, // LSLS R0, R0, R0
                 0xe1b00050u, // ASRS R0, R0, R0
-                0xe1b00070u  // RORS R0, R0, R0
+                0xe1b00070u, // RORS R0, R0, R0
             };
         }
-#endregion
+        #endregion
 
         private const int RndCnt = 2;
 
@@ -76,7 +95,7 @@ namespace Ryujinx.Tests.Cpu
         }
 
         [Test, Pairwise]
-        public void Lsr_Lsl_Asr_Ror([ValueSource(nameof(_Lsr_Lsl_Asr_Ror_))] uint opcode,
+        public void Lsr_Lsl_Asr_Ror([ValueSource(nameof(LsrLslAsrRor))] uint opcode,
                                     [Values(0x00000000u, 0x7FFFFFFFu,
                                             0x80000000u, 0xFFFFFFFFu)] uint shiftValue,
                                     [Range(0, 31)] int shiftAmount)
@@ -130,7 +149,7 @@ namespace Ryujinx.Tests.Cpu
         }
 
         [Test, Pairwise]
-        public void Ssat_Usat([ValueSource(nameof(_Ssat_Usat_))] uint opcode,
+        public void Ssat_Usat([ValueSource(nameof(SsatUsat))] uint opcode,
                               [Values(0u, 0xdu)] uint rd,
                               [Values(1u, 0xdu)] uint rn,
                               [Values(0u, 7u, 8u, 0xfu, 0x10u, 0x1fu)] uint sat,
@@ -148,7 +167,7 @@ namespace Ryujinx.Tests.Cpu
         }
 
         [Test, Pairwise]
-        public void Ssat16_Usat16([ValueSource(nameof(_Ssat16_Usat16_))] uint opcode,
+        public void Ssat16_Usat16([ValueSource(nameof(Ssat16Usat16))] uint opcode,
                                   [Values(0u, 0xdu)] uint rd,
                                   [Values(1u, 0xdu)] uint rn,
                                   [Values(0u, 7u, 8u, 0xfu)] uint sat,
@@ -165,7 +184,43 @@ namespace Ryujinx.Tests.Cpu
         }
 
         [Test, Pairwise]
-        public void SU_H_AddSub_8([ValueSource(nameof(_SU_H_AddSub_8_))] uint opcode,
+        public void SU_H_AddSub_8([ValueSource(nameof(SuHAddSub8))] uint opcode,
+                                  [Values(0u, 0xdu)] uint rd,
+                                  [Values(1u)] uint rm,
+                                  [Values(2u)] uint rn,
+                                  [Random(RndCnt)] uint w0,
+                                  [Random(RndCnt)] uint w1,
+                                  [Random(RndCnt)] uint w2)
+        {
+            opcode |= ((rm & 15) << 0) | ((rd & 15) << 12) | ((rn & 15) << 16);
+
+            uint sp = TestContext.CurrentContext.Random.NextUInt();
+
+            SingleOpcode(opcode, r0: w0, r1: w1, r2: w2, sp: sp);
+
+            CompareAgainstUnicorn();
+        }
+
+        [Test, Pairwise]
+        public void U_Q_AddSub_16([ValueSource(nameof(UQAddSub16))] uint opcode,
+                                  [Values(0u, 0xdu)] uint rd,
+                                  [Values(1u)] uint rm,
+                                  [Values(2u)] uint rn,
+                                  [Random(RndCnt)] uint w0,
+                                  [Random(RndCnt)] uint w1,
+                                  [Random(RndCnt)] uint w2)
+        {
+            opcode |= ((rm & 15) << 0) | ((rd & 15) << 12) | ((rn & 15) << 16);
+
+            uint sp = TestContext.CurrentContext.Random.NextUInt();
+
+            SingleOpcode(opcode, r0: w0, r1: w1, r2: w2, sp: sp);
+
+            CompareAgainstUnicorn();
+        }
+
+        [Test, Pairwise]
+        public void U_Q_AddSub_8([ValueSource(nameof(UQAddSub8))] uint opcode,
                                   [Values(0u, 0xdu)] uint rd,
                                   [Values(1u)] uint rm,
                                   [Values(2u)] uint rn,
@@ -191,9 +246,9 @@ namespace Ryujinx.Tests.Cpu
                               [Random(RndCnt)] uint w2)
         {
             uint opUadd8 = 0xE6500F90; // UADD8 R0, R0, R0
-            uint opSel   = 0xE6800FB0; // SEL R0, R0, R0
+            uint opSel = 0xE6800FB0; // SEL R0, R0, R0
 
-            opUadd8  |= ((rm & 15) << 0) | ((rd & 15) << 12) | ((rn & 15) << 16);
+            opUadd8 |= ((rm & 15) << 0) | ((rd & 15) << 12) | ((rn & 15) << 16);
             opSel |= ((rm & 15) << 0) | ((rd & 15) << 12) | ((rn & 15) << 16);
 
             SetContext(r0: w0, r1: w1, r2: w2);

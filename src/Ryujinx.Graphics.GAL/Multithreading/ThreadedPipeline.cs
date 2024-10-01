@@ -1,4 +1,4 @@
-﻿using Ryujinx.Graphics.GAL.Multithreading.Commands;
+using Ryujinx.Graphics.GAL.Multithreading.Commands;
 using Ryujinx.Graphics.GAL.Multithreading.Model;
 using Ryujinx.Graphics.GAL.Multithreading.Resources;
 using Ryujinx.Graphics.Shader;
@@ -9,13 +9,11 @@ namespace Ryujinx.Graphics.GAL.Multithreading
 {
     public class ThreadedPipeline : IPipeline
     {
-        private ThreadedRenderer _renderer;
-        private IPipeline _impl;
+        private readonly ThreadedRenderer _renderer;
 
-        public ThreadedPipeline(ThreadedRenderer renderer, IPipeline impl)
+        public ThreadedPipeline(ThreadedRenderer renderer)
         {
             _renderer = renderer;
-            _impl = impl;
         }
 
         private TableRef<T> Ref<T>(T reference)
@@ -179,9 +177,21 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _renderer.QueueCommand();
         }
 
-        public void SetImage(int binding, ITexture texture, Format imageFormat)
+        public void SetImage(ShaderStage stage, int binding, ITexture texture)
         {
-            _renderer.New<SetImageCommand>().Set(binding, Ref(texture), imageFormat);
+            _renderer.New<SetImageCommand>().Set(stage, binding, Ref(texture));
+            _renderer.QueueCommand();
+        }
+
+        public void SetImageArray(ShaderStage stage, int binding, IImageArray array)
+        {
+            _renderer.New<SetImageArrayCommand>().Set(stage, binding, Ref(array));
+            _renderer.QueueCommand();
+        }
+
+        public void SetImageArraySeparate(ShaderStage stage, int setIndex, IImageArray array)
+        {
+            _renderer.New<SetImageArraySeparateCommand>().Set(stage, setIndex, Ref(array));
             _renderer.QueueCommand();
         }
 
@@ -263,12 +273,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _renderer.QueueCommand();
         }
 
-        public void SetRenderTargetScale(float scale)
-        {
-            _renderer.New<SetRenderTargetScaleCommand>().Set(scale);
-            _renderer.QueueCommand();
-        }
-
         public void SetScissors(ReadOnlySpan<Rectangle<int>> scissors)
         {
             _renderer.New<SetScissorsCommand>().Set(_renderer.CopySpan(scissors));
@@ -290,6 +294,18 @@ namespace Ryujinx.Graphics.GAL.Multithreading
         public void SetTextureAndSampler(ShaderStage stage, int binding, ITexture texture, ISampler sampler)
         {
             _renderer.New<SetTextureAndSamplerCommand>().Set(stage, binding, Ref(texture), Ref(sampler));
+            _renderer.QueueCommand();
+        }
+
+        public void SetTextureArray(ShaderStage stage, int binding, ITextureArray array)
+        {
+            _renderer.New<SetTextureArrayCommand>().Set(stage, binding, Ref(array));
+            _renderer.QueueCommand();
+        }
+
+        public void SetTextureArraySeparate(ShaderStage stage, int setIndex, ITextureArray array)
+        {
+            _renderer.New<SetTextureArraySeparateCommand>().Set(stage, setIndex, Ref(array));
             _renderer.QueueCommand();
         }
 
@@ -323,9 +339,9 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _renderer.QueueCommand();
         }
 
-        public void SetViewports(ReadOnlySpan<Viewport> viewports, bool disableTransform)
+        public void SetViewports(ReadOnlySpan<Viewport> viewports)
         {
-            _renderer.New<SetViewportsCommand>().Set(_renderer.CopySpan(viewports), disableTransform);
+            _renderer.New<SetViewportsCommand>().Set(_renderer.CopySpan(viewports));
             _renderer.QueueCommand();
         }
 
@@ -369,12 +385,6 @@ namespace Ryujinx.Graphics.GAL.Multithreading
             _renderer.New<TryHostConditionalRenderingFlushCommand>().Set(Ref(value as ThreadedCounterEvent), Ref(compare as ThreadedCounterEvent), isEqual);
             _renderer.QueueCommand();
             return false;
-        }
-
-        public void UpdateRenderScale(ReadOnlySpan<float> scales, int totalCount, int fragmentCount)
-        {
-            _renderer.New<UpdateRenderScaleCommand>().Set(_renderer.CopySpan(scales.Slice(0, totalCount)), totalCount, fragmentCount);
-            _renderer.QueueCommand();
         }
     }
 }

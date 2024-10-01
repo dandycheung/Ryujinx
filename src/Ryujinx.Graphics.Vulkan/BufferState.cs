@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 
 namespace Ryujinx.Graphics.Vulkan
 {
     struct BufferState : IDisposable
     {
-        public static BufferState Null => new BufferState(null, 0, 0);
+        public static BufferState Null => new(null, 0, 0);
 
         private readonly int _offset;
         private readonly int _size;
@@ -19,13 +19,16 @@ namespace Ryujinx.Graphics.Vulkan
             buffer?.IncrementReferenceCount();
         }
 
-        public void BindTransformFeedbackBuffer(VulkanRenderer gd, CommandBufferScoped cbs, uint binding)
+        public readonly void BindTransformFeedbackBuffer(VulkanRenderer gd, CommandBufferScoped cbs, uint binding)
         {
             if (_buffer != null)
             {
-                var buffer = _buffer.Get(cbs, _offset, _size).Value;
+                var buffer = _buffer.Get(cbs, _offset, _size, true).Value;
 
-                gd.TransformFeedbackApi.CmdBindTransformFeedbackBuffers(cbs.CommandBuffer, binding, 1, buffer, (ulong)_offset, (ulong)_size);
+                ulong offset = (ulong)_offset;
+                ulong size = (ulong)_size;
+
+                gd.TransformFeedbackApi.CmdBindTransformFeedbackBuffers(cbs.CommandBuffer, binding, 1, in buffer, in offset, in size);
             }
         }
 
@@ -40,7 +43,12 @@ namespace Ryujinx.Graphics.Vulkan
             }
         }
 
-        public void Dispose()
+        public readonly bool Overlaps(Auto<DisposableBuffer> buffer, int offset, int size)
+        {
+            return buffer == _buffer && offset < _offset + _size && offset + size > _offset;
+        }
+
+        public readonly void Dispose()
         {
             _buffer?.DecrementReferenceCount();
         }
